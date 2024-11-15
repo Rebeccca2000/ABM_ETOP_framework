@@ -16,10 +16,6 @@ DB_CONNECTION_STRING = 'sqlite:///service_provider_database_1.db'
 SIMULATION_STEPS = 144  # Run for a larger number of steps for better analysis
 num_commuters = 120
 
-# Database engine and session
-engine = create_engine(DB_CONNECTION_STRING)
-Session = sessionmaker(bind=engine)
-
 def calculate_gini_coefficient(values):
     """
     Computes the Gini coefficient from a list of values.
@@ -52,10 +48,12 @@ def calculate_gini_coefficient(values):
 
 
 def run_single_simulation(params):
+    engine = create_engine(params['db_connection_string'])
+    Session = sessionmaker(bind=engine)
     session = Session()
     try:
         reset_database(
-            engine=params['engine'],
+            engine=engine,
             session=session,
             uber_like1_capacity=params['uber_like1_capacity'],
             uber_like1_price=params['uber_like1_price'],
@@ -173,7 +171,6 @@ def plot_gini_vs_subsidies(gini_results, total_subsidies, title, color):
 
 base_parameters = {
     'db_connection_string': DB_CONNECTION_STRING,
-    'engine': engine,
     'num_commuters': num_commuters,
     'grid_width': 55,
     'grid_height': 55,
