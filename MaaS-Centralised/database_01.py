@@ -1,4 +1,4 @@
-DB_CONNECTION_STRING = 'sqlite:///service_provider_database_13.db'
+DB_CONNECTION_STRING = 'sqlite:///service_provider_database_1.db'
 SIMULATION_STEPS = 3
 # #####################################Control for commuters#################################
 num_commuters = 100

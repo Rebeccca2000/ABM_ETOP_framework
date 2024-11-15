@@ -1,0 +1,7 @@
+mesa
+numpy
+sqlalchemy
+matplotlib
+scipy
+statsmodels
+pandas

@@ -11,7 +11,7 @@ from agent_service_provider_initialisation_03 import reset_database
 from agent_service_provider_initialisation_03 import CommuterInfoLog, ServiceBookingLog
 
 # Global configuration
-DB_CONNECTION_STRING = 'sqlite:///service_provider_database_14.db'
+DB_CONNECTION_STRING = 'sqlite:///service_provider_database_1.db'
 SIMULATION_STEPS = 56  # Run for a larger number of steps for better analysis
 num_commuters = 120
 
