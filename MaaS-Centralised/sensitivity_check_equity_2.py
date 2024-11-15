@@ -9,10 +9,11 @@ import statsmodels.api as sm
 from run_visualisation_03 import MobilityModel
 from agent_service_provider_initialisation_03 import reset_database
 from agent_service_provider_initialisation_03 import CommuterInfoLog, ServiceBookingLog
+import multiprocessing as mp 
 
 # Global configuration
 DB_CONNECTION_STRING = 'sqlite:///service_provider_database_1.db'
-SIMULATION_STEPS = 56  # Run for a larger number of steps for better analysis
+SIMULATION_STEPS = 144  # Run for a larger number of steps for better analysis
 num_commuters = 120
 
 # Database engine and session
@@ -135,20 +136,20 @@ def run_single_simulation(params):
     finally:
         session.close()
 
-def run_multiple_simulations(parameter_sets):
-    """
-    Run multiple simulations and collect Gini index and total subsidy for low-income group.
-    """
-    low_income_gini_results = []
-    low_income_total_subsidies = []
+# def run_multiple_simulations(parameter_sets):
+#     """
+#     Run multiple simulations and collect Gini index and total subsidy for low-income group.
+#     """
+#     low_income_gini_results = []
+#     low_income_total_subsidies = []
 
-    for i, params in enumerate(parameter_sets):
-        print(f"Running simulation #{i + 1}")
-        usage, subsidy = run_single_simulation(params)
-        low_income_gini_results.append(usage)
-        low_income_total_subsidies.append(subsidy)
+#     for i, params in enumerate(parameter_sets):
+#         print(f"Running simulation #{i + 1}")
+#         usage, subsidy = run_single_simulation(params)
+#         low_income_gini_results.append(usage)
+#         low_income_total_subsidies.append(subsidy)
 
-    return low_income_gini_results, low_income_total_subsidies
+#     return low_income_gini_results, low_income_total_subsidies
 
 def plot_gini_vs_subsidies(gini_results, total_subsidies, title, color):
     """
@@ -313,17 +314,28 @@ more_parameter_sets = [
 # Combine with the original set if needed
 parameter_sets += more_parameter_sets
 
-# Run simulations
-low_income_gini_results, low_income_total_subsidies = run_multiple_simulations(parameter_sets)
+def run_parallel_simulations(parameter_sets, num_cpus):
+    with mp.Pool(processes=num_cpus) as pool:
+        results = pool.map(run_single_simulation, parameter_sets)
+    
+    low_income_gini_results, low_income_total_subsidies = zip(*results)
+    return low_income_gini_results, low_income_total_subsidies
+
+# Running the simulations with 12 sets of parameters in parallel
+num_cpus = 4  # Adjust based on available CPUs
+low_income_gini_results, low_income_total_subsidies = run_parallel_simulations(parameter_sets, num_cpus)
+
+# # Run simulations
+# low_income_gini_results, low_income_total_subsidies = run_multiple_simulations(parameter_sets)
 
 # Save results to pickle files
 with open('simulation_results_low_income_equity.pkl', 'wb') as f:
     pickle.dump((low_income_gini_results, low_income_total_subsidies), f)
 print("Simulation results saved successfully.")
 
-# Load saved results (if needed)
-with open('simulation_results_low_income_equity.pkl', 'rb') as f:
-    low_income_gini_results, low_income_total_subsidies = pickle.load(f)
+# # Load saved results (if needed)
+# with open('simulation_results_low_income_equity.pkl', 'rb') as f:
+#     low_income_gini_results, low_income_total_subsidies = pickle.load(f)
 
 # Plot the results
 plot_gini_vs_subsidies(
