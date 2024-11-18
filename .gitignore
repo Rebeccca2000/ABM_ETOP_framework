@@ -21,3 +21,4 @@ MaaS-Centralised/*.o*
 # Ignore large data files if not needed in the repository
 data/
 output/
+MaaS-Centralised/*.o*
