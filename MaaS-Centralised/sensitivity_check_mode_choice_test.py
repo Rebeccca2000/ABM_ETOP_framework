@@ -8,7 +8,7 @@ from agent_service_provider_initialisation_03 import CommuterInfoLog, ServiceBoo
 import numpy as np
 # Global configuration
 DB_CONNECTION_STRING = 'sqlite:///service_provider_database_01.db'
-SIMULATION_STEPS = 40 # For testing purposes, keep the steps small
+SIMULATION_STEPS = 3 # For testing purposes, keep the steps small
 num_commuters = 100
 
 engine = create_engine(DB_CONNECTION_STRING)

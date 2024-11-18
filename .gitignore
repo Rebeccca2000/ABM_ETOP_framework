@@ -11,7 +11,7 @@ env/
 *.bak
 *.swp
 *~
-
+MaaS-Centralised/*.o*
 # Ignore OneDrive temporary files
 .~*
 
@@ -21,3 +21,4 @@ env/
 # Ignore large data files if not needed in the repository
 data/
 output/
+MaaS-Centralised/*.o*

@@ -158,7 +158,6 @@ class ServiceProvider(Agent):
             return None
 
         if start_time < current_step:
-            print(f"Testoing for get_shared_service_price: The current step is {current_step} and the start time is {start_time}")
             raise ValueError("get_shared_service_price start_time must be more than the current step")
         elif start_time > current_step + 5:
             raise ValueError("start_time must be less than current step + 5 steps")
@@ -191,7 +190,6 @@ class ServiceProvider(Agent):
                     services = session.query(table_class).filter_by(mode_id=mode_id, step_count=step_count_to_query).all()
                     for service in services:
                         price_dict[service.company_name] = getattr(service, price_column)
-                print(f"the get shared service price dict at {step_count_to_query} is {price_dict}")
                 return price_dict
         except SQLAlchemyError as e:
             print(f"Error retrieving current price: {e}")
@@ -223,7 +221,6 @@ class ServiceProvider(Agent):
                 )
                 session.add(booking_log)
                 session.commit()
-                print(f"Share service booking recorded for request_id={request_id}, company_name={company_name}")
             else:
                 print(f"No service found for company name: {company_name} in table: {provider_table}")
 
@@ -348,62 +345,6 @@ class ServiceProvider(Agent):
 
         except SQLAlchemyError as e:
             print(f"Error updating pricing: {e}")
-
-
-
-
-
-
-
-
-
-
-
-    # def dynamic_pricing_share(self):
-    #     try:
-    #         with self.Session() as session:
-    #             service_tables = ['UberLike1', 'UberLike2', 'BikeShare1', 'BikeShare2']
-    #             SDR_threshold = 1.0  # Threshold for surge pricing
-    #             current_time = self.model.get_current_step()
-                
-    #             # Define target utilization rate and sensitivity factor
-    #             SDR_target = 0.75  # Target utilization rate
-    #             gamma = 0.1  # Sensitivity factor for price adjustments
-                
-    #             for service_table_name in service_tables:
-    #                 service_table = self.get_service_table(service_table_name)
-
-    #                 for service in session.query(service_table).all():
-    #                     for i in range(6):
-    #                         availability = getattr(service, f'availability_{i}')
-    #                         total_vehicles = service.capacity  
-    #                         occupied_vehicles = total_vehicles - availability
-
-    #                         # Calculate SDR (Utilization Rate)
-    #                         SDR = occupied_vehicles / max(total_vehicles, 1)
-
-    #                         # Determine Price Adjustment based on SDR
-    #                         price_adjustment = gamma * ((SDR - SDR_target) / SDR_target)
-
-    #                         # Time-based adjustment
-    #                         time_for_calculation = current_time + i
-    #                         if self.check_is_peak(time_for_calculation):
-    #                             beta = 1.5
-    #                         else:
-    #                             beta = 0.8
-
-    #                         # Location-based adjustment
-    #                         gamma_location = 1.0  # Don't include this for now
-
-    #                         # Calculate Dynamic Price with equilibrium adjustment
-    #                         dynamic_price = service.base_price * (1 + price_adjustment) * beta * gamma_location
-
-    #                         # Update the current price
-    #                         setattr(service, f'current_price_{i}', dynamic_price)
-
-    #                 session.commit()
-    #     except SQLAlchemyError as e:
-    #         print(f"Error updating pricing: {e}")
 
 
     def initialize_availability(self, current_step):
