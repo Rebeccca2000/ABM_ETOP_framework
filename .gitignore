@@ -11,7 +11,7 @@ env/
 *.bak
 *.swp
 *~
-
+MaaS-Centralised/*.o*
 # Ignore OneDrive temporary files
 .~*
 
