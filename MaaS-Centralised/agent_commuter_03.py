@@ -292,7 +292,6 @@ class Commuter(Agent):
             return self.asc_values['default']
         
         ASC_j = set_ASC_values(mode)
-        print(f"ASC_j for mode '{mode}' is {ASC_j}")
 
         # Step 5: Apply the government subsidy based on the income level and mode
         income_level = self.income_level  # Directly accessing self.income_level
@@ -314,7 +313,6 @@ class Commuter(Agent):
             subsidy_percentage = subsidy_dataset.get(income_level, {}).get(subsidy_key, 0)  # Default to 0 if no subsidy available
         else:
             subsidy_percentage = 0
-        print(f"the price for the mode {mode} is {price}")
         subsidy_amount = price * subsidy_percentage  # Subsidy is a percentage of the price
         price_after_subsidy = price - subsidy_amount  # Apply the subsidy
             
@@ -327,25 +325,23 @@ class Commuter(Agent):
         )
 
         # Return both the utility value and the subsidy amount
-        print(f"The utility value is {U_j} and the subsidy_amount is {subsidy_amount}")
         return U_j, subsidy_amount
 
 
 
   
     def accept_service(self, request_id):
-        print(f"[DEBUG] accept_service called for Request ID: {request_id}")
 
         request = self.requests.get(request_id)
         
         if request:
-            print(f"[DEBUG] Request found. Updating selected route and status.")
+    
             request['status'] = 'Service Selected'
             self.services_owned[request_id] = request
-            print(f"[DEBUG] Updated request: {request}")
+            
             return True
         else:
-            print(f"[DEBUG] No request found for Request ID: {request_id}")
+    
             return False
 
     def accept_service_non_maas(self, request_id,selected_route):
@@ -355,10 +351,10 @@ class Commuter(Agent):
             request['selected_route'] = selected_route
             request['status'] = 'Service Selected'
             self.services_owned[request_id] = request
-            print(f"[DEBUG] Updated request: {request}")
+        
             return True
         else:
-            print(f"[DEBUG] No request found for Request ID: {request_id}")
+            
             return False
 
     ########################################################################################################
@@ -427,115 +423,11 @@ class Commuter(Agent):
                     pass
 
 
-    # def handle_maas_bundle(self, detailed_itinerary, start_time, request):
-    #     current_time = self.model.schedule.time
-    #     elapsed_time = current_time - start_time
-    #     current_segment_start_time = start_time
-    #     print("[DEBUG] Handling MaaS Bundle for Commuter")
-    #     print(f"[DEBUG] Selected route in MaaS bundle: {request.get('selected_route', {})}")
-    #     # Ensure 'to_station_info' and 'to_destination_info' exist in the selected route
-    #     to_station_info = request['selected_route']['to_station_info']
-    #     to_destination_info = request['selected_route']['to_destination_info']
-
-    #     if not to_station_info:
-    #         print("[ERROR] Missing 'to_station_info' in MaaS bundle")
-    #         return
-
-    #     if not to_destination_info:
-    #         print("[ERROR] Missing 'to_destination_info' in MaaS bundle")
-    #         return
-
-    #     for segment in detailed_itinerary:
-    #         if segment[0] == 'to station':
-                               
-    #             print(f"Info for handle-maas_bundle:")
-    #             print(f"to station info for handle-maas_bundle: {to_station_info}")
-    #             print(f"segment info for handle-maas_bundle:{segment}")
-    #             company = to_station_info[0] 
-    #             if 'Bike' in company:
-    #                 mode = 'bike'
-    #             elif 'Uber' in company:
-    #                 mode = 'car'
-    #             else:
-    #                 mode = 'walk'
-    #             travel_speed = self.model.service_provider_agent.get_travel_speed(mode, current_time)
-    #             start_location = segment[1][0]
-    #             end_location = self.get_station_coordinates(segment[1][1])
-    #             route = self.model.maas_agent.dijkstra_with_congestion(start_location, end_location)
-    #             #Chaneg this using the saved data.
-    #             time_to_complete = len(route) * travel_speed
-    #             if elapsed_time <= time_to_complete:
-    #                 self.move_along_route(route, travel_speed, elapsed_time)
-    #                 return
-    #             else:
-    #                 elapsed_time -= time_to_complete
-    #                 current_segment_start_time += time_to_complete
-    #         elif segment[0] == 'to destination':
-    #             # Handle the single mode (bike, Uber, etc.)
-
-    #             company =  to_destination_info[0]
-    #             if 'Bike' in company:
-    #                 mode = 'bike'
-    #             elif 'Uber' in company:
-    #                 mode = 'car'
-    #             else:
-    #                 mode = 'walk'
-    #             print(f"[INFO] The mode for handle_maas_bundle for to station or destination is :{mode}")
-    #             travel_speed = self.model.service_provider_agent.get_travel_speed(mode, current_time)
-    #             start_location = self.get_station_coordinates(segment[1][0])
-    #             end_location = segment[1][1]
-    #             route = self.model.maas_agent.dijkstra_with_congestion(start_location, end_location)
-
-    #             time_to_complete = len(route) * travel_speed
-    #             if elapsed_time <= time_to_complete:
-    #                 self.move_along_route(route, travel_speed, elapsed_time)
-    #                 return
-    #             else:
-    #                 elapsed_time -= time_to_complete
-    #                 current_segment_start_time += time_to_complete
-
-    #         elif segment[0] in ['bus', 'train']:
-    #             # Handle the public transport segment
-    #             self.current_mode = segment[0]
-    #             travel_speed = self.model.service_provider_agent.get_travel_speed(segment[0], current_time)
-    #             route_list = self.model.maas_agent.routes[segment[0]][segment[1]]
-    #             stops = segment[2]
-    #             get_on_index = route_list.index(stops[0])
-    #             get_off_index = route_list.index(stops[1])
-    #             num_stops = get_off_index - get_on_index
-    #             time_on_transit = num_stops * travel_speed
-
-    #             if elapsed_time <= time_on_transit:
-    #                 current_stop_index = get_on_index + (elapsed_time // travel_speed)
-    #                 self.move_and_update_location(self.get_station_coordinates(route_list[int(current_stop_index)]))
-    #                 return
-    #             else:
-    #                 elapsed_time -= time_on_transit
-    #                 current_segment_start_time += time_on_transit
-
-    #         elif segment[0] == 'transfer':
-    #             # Handle the transfer segment
-    #             self.current_mode = 'walk'
-    #             transfer_time = self.model.maas_agent.transfers[tuple(segment[1])]
-    #             if elapsed_time <= transfer_time:
-    #                 self.move_and_update_location(self.get_station_coordinates(segment[1][0]))
-    #                 return
-    #             else:
-    #                 elapsed_time -= transfer_time
-    #                 current_segment_start_time += transfer_time
-
-    #     # If we finish the loop and haven't returned, the commuter has arrived at the destination
-    #     request['status'] = 'finished'
-    #     self.current_mode = None  # Reset mode
-    #     print("[DEBUG] MaaS Bundle: Commuter has finished the journey")
-
     def handle_maas_bundle(self, detailed_itinerary, start_time, request):
         current_time = self.model.schedule.time
         elapsed_time = current_time - start_time
         current_segment_start_time = start_time
-        print("[DEBUG] Handling MaaS Bundle for Commuter")
-        print(f"[DEBUG] Selected route in MaaS bundle: {request.get('selected_route', {})}")
-        
+       
         # Ensure 'to_station_info' and 'to_destination_info' exist in the selected route
         to_station_info = request['selected_route']['to_station_info']
         to_destination_info = request['selected_route']['to_destination_info']
@@ -628,7 +520,7 @@ class Commuter(Agent):
         # If we finish the loop and haven't returned, the commuter has arrived at the destination
         request['status'] = 'finished'
         self.current_mode = None  # Reset mode
-    print("[DEBUG] MaaS Bundle: Commuter has finished the journey")
+   
 
 
 
@@ -637,11 +529,6 @@ class Commuter(Agent):
         current_time = self.model.schedule.time
         elapsed_time = current_time - start_time
         current_segment_start_time = start_time
-        print("Trouble shooting... for handle_public_route")
-        print("The detailed intinary is ")
-        print(f"{detailed_itinerary}")
-        print("The request list for this commuter is")
-        print(f"{self.requests}")
         for segment in detailed_itinerary:
             if segment[0] == 'to station':
                 self.current_mode = 'walk'  # Set current mode

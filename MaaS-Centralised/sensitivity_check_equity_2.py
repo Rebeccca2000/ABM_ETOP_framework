@@ -10,9 +10,11 @@ from run_visualisation_03 import MobilityModel
 from agent_service_provider_initialisation_03 import reset_database
 from agent_service_provider_initialisation_03 import CommuterInfoLog, ServiceBookingLog
 import multiprocessing as mp 
+import os
 
+# Edited on 18/11/24, now it is suitable for running on Kantana
 # Global configuration
-DB_CONNECTION_STRING = 'sqlite:///service_provider_database_1.db'
+# DB_CONNECTION_STRING = 'sqlite:///service_provider_database_1.db'
 SIMULATION_STEPS = 144  # Run for a larger number of steps for better analysis
 num_commuters = 120
 
@@ -48,7 +50,10 @@ def calculate_gini_coefficient(values):
 
 
 def run_single_simulation(params):
-    engine = create_engine(params['db_connection_string'])
+    # Generate a unique database for each process
+    db_path = f"service_provider_database_{os.getpid()}.db"
+    db_connection_string = f"sqlite:///{db_path}"
+    engine = create_engine(db_connection_string)
     Session = sessionmaker(bind=engine)
     session = Session()
     try:
@@ -66,7 +71,7 @@ def run_single_simulation(params):
         )
 
         model = MobilityModel(
-            db_connection_string=params['db_connection_string'],
+            db_connection_string=db_connection_string,
             num_commuters=params['num_commuters'],
             grid_width=params['grid_width'],
             grid_height=params['grid_height'],
@@ -133,6 +138,8 @@ def run_single_simulation(params):
 
     finally:
         session.close()
+        # Optionally, clean up the database file after the run if not needed
+        os.remove(db_path)
 
 # def run_multiple_simulations(parameter_sets):
 #     """
@@ -149,7 +156,7 @@ def run_single_simulation(params):
 
 #     return low_income_gini_results, low_income_total_subsidies
 
-def plot_gini_vs_subsidies(gini_results, total_subsidies, title, color):
+def plot_gini_vs_subsidies(gini_results, total_subsidies, title, color, output_file='gini_vs_subsidy_plot.png'):
     """
     Plot scatter plot for Gini Coefficient vs Total Subsidies.
     """
@@ -167,10 +174,13 @@ def plot_gini_vs_subsidies(gini_results, total_subsidies, title, color):
     plt.legend()
     plt.grid(True)
     plt.show()
+    # Save the plot to a file
+    plt.savefig(output_file)
+    print(f"Plot saved as {output_file}")
 
 
 base_parameters = {
-    'db_connection_string': DB_CONNECTION_STRING,
+    # 'db_connection_string': DB_CONNECTION_STRING,
     'num_commuters': num_commuters,
     'grid_width': 55,
     'grid_height': 55,
@@ -308,8 +318,69 @@ more_parameter_sets = [
     },
 ]
 
+additional_parameter_sets = [
+    {
+        **base_parameters,
+        'subsidy_dataset': {
+            'low': {'bike': 0.15, 'car': 0.03, 'MaaS_Bundle': 0.07},
+            'middle': {'bike': 0.2, 'car': 0.07, 'MaaS_Bundle': 0.3},
+            'high': {'bike': 0.3, 'car': 0.1, 'MaaS_Bundle': 0.15}
+        }
+    },
+    {
+        **base_parameters,
+        'subsidy_dataset': {
+            'low': {'bike': 0.5, 'car': 0.75, 'MaaS_Bundle': 0.6},
+            'middle': {'bike': 0.4, 'car': 0.2, 'MaaS_Bundle': 0.35},
+            'high': {'bike': 0.2, 'car': 0.1, 'MaaS_Bundle': 0.3}
+        }
+    },
+    {
+        **base_parameters,
+        'subsidy_dataset': {
+            'low': {'bike': 0.3, 'car': 0.15, 'MaaS_Bundle': 0.4},
+            'middle': {'bike': 0.4, 'car': 0.25, 'MaaS_Bundle': 0.25},
+            'high': {'bike': 0.15, 'car': 0.05, 'MaaS_Bundle': 0.08}
+        }
+    },
+    {
+        **base_parameters,
+        'subsidy_dataset': {
+            'low': {'bike': 0.35, 'car': 0.2, 'MaaS_Bundle': 0.5},
+            'middle': {'bike': 0.3, 'car': 0.15, 'MaaS_Bundle': 0.3},
+            'high': {'bike': 0.3, 'car': 0.2, 'MaaS_Bundle': 0.05}
+        }
+    },
+    {
+        **base_parameters,
+        'subsidy_dataset': {
+            'low': {'bike': 0.2, 'car': 0.1, 'MaaS_Bundle': 0.3},
+            'middle': {'bike': 0.35, 'car': 0.15, 'MaaS_Bundle': 0.35},
+            'high': {'bike': 0.25, 'car': 0.1, 'MaaS_Bundle': 0.1}
+        }
+    },
+    {
+        **base_parameters,
+        'subsidy_dataset': {
+            'low': {'bike': 0.1, 'car': 0.25, 'MaaS_Bundle': 0.3},
+            'middle': {'bike': 0.2, 'car': 0.3, 'MaaS_Bundle': 0.25},
+            'high': {'bike': 0.35, 'car': 0.15, 'MaaS_Bundle': 0.1}
+        }
+    },
+    {
+        **base_parameters,
+        'subsidy_dataset': {
+            'low': {'bike': 0.6, 'car': 0.2, 'MaaS_Bundle': 0.5},
+            'middle': {'bike': 0.3, 'car': 0.1, 'MaaS_Bundle': 0.4},
+            'high': {'bike': 0.15, 'car': 0.3, 'MaaS_Bundle': 0.05}
+        }
+    }
+]
+
 # Combine with the original set if needed
 parameter_sets += more_parameter_sets
+# Combine all parameter sets
+parameter_sets += additional_parameter_sets
 
 def run_parallel_simulations(parameter_sets, num_cpus):
     with mp.Pool(processes=num_cpus) as pool:
@@ -339,5 +410,6 @@ plot_gini_vs_subsidies(
     low_income_gini_results,
     low_income_total_subsidies,
     'Low-Income Gini Coefficient vs Total Subsidy',
-    'green'
+    'green',
+    output_file='gini_vs_subsidy_plot.png'
 )

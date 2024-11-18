@@ -341,11 +341,9 @@ class MaaS(Agent):
         detailed_itinerary = []
 
         if not optimal_path:
-            print("Optimal path is empty, returning empty itinerary.")  # Debug print
             return detailed_itinerary
 
         if len(optimal_path) == 1:
-            print(f"Optimal path has only one station: {optimal_path}. No public transport needed.")  # Debug print
             return detailed_itinerary
 
         origin_station_mode, origin_station = self.find_nearest_station_any_mode(origin_point)
@@ -374,16 +372,6 @@ class MaaS(Agent):
                 
 
         detailed_itinerary.append(('to destination', [optimal_path[-1], destination_point]))
-        # if detailed_itinerary[0][0] == 'to station':
-        #     print("build_detailed_itinerary test 4")
-        #     detailed_itinerary[0] = ('to station', [origin_point, detailed_itinerary[1][2][0]])
-        #     print(f"Updated first segment to station: {detailed_itinerary[0]}")  # Debug print
-
-        # if detailed_itinerary[-1][0] == 'to destination':
-        #     print(f"build_detailed_itinerary test 5: detailed_itinerary is {detailed_itinerary}")
-        #     detailed_itinerary[-1] = ('to destination', [detailed_itinerary[-2][2][-1], destination_point])
-        #     print(f"Updated last segment to destination: {detailed_itinerary[-1]}")  # Debug print
-        print(f"detailed itinerary format is: {detailed_itinerary}")
         return detailed_itinerary
 
     def calculate_total_time_and_price_public(self, payment_scheme, detailed_itinerary, walking_speed, bus_stop_speed, train_stop_speed, bus_stop_price, train_stop_price):
@@ -479,7 +467,6 @@ class MaaS(Agent):
 
     def options_without_maas(self, request_id, start_time, origin, destination):
         travel_options = {'request_id': request_id}
-        print("Testing options without mass")
         # Calculate single mode options
         single_modes = ['walk', 'bike', 'car']
         for mode in single_modes:
@@ -497,7 +484,7 @@ class MaaS(Agent):
                 travel_options[f'{mode}_availability'] = availability
 
             elif mode == 'bike':
-                print(f"Testoing for options_without_maas for the step")
+            
                 price_dict = self.service_provider_agent.get_shared_service_price(mode, start_time)
               
                 if price_dict is None:
@@ -516,7 +503,6 @@ class MaaS(Agent):
                     travel_options[f'{mode}_{company_name}_price'] = total_price
                     travel_options[f'{mode}_{company_name}_availability'] = availability
             else:
-                print(f"Testoing for options_without_maas for the step")
                 price_dict = self.service_provider_agent.get_shared_service_price(mode, start_time)
               
                 if price_dict is None:
@@ -558,7 +544,6 @@ class MaaS(Agent):
             if request_id in commuter.requests:
                 commuter.requests[request_id]['travel_options_without_maas'] = travel_options
                 
-        print(f"Generated options_without_maas for request {request_id}: \n{travel_options}")
         return travel_options
     
     
@@ -566,7 +551,6 @@ class MaaS(Agent):
     ##################################### For MaaS Options ########################################
     ########################################################################################################
     def calculate_time_and_price_to_station_or_destination(self, segment, start_time):
-        print("Testing calculate_time_and_price_to_station_or_destination")
         
         options = []
         
@@ -595,12 +579,10 @@ class MaaS(Agent):
         else:
             raise ValueError(f"Segment type {segment[0]} is not recognized.")
 
-        print(f"Final Origin: {origin}, Final Destination: {destination}")
 
         # Loop through the single modes
         single_modes = ['walk', 'bike', 'car']
         for mode in single_modes:
-            print(f"Processing mode: {mode}")
             
             if mode == 'walk':
                 unit_price = 0
@@ -610,7 +592,6 @@ class MaaS(Agent):
                 
                 options.append((segment[0], segment[1], mode, total_time, total_price, shortest_route))  # Add shortest route here
             elif mode == 'bike':
-                print(f"calculate_time_and_price_to_station_or_destination: Testing for options_without_maas for the step")
                 price_dict = self.service_provider_agent.get_shared_service_price(mode, start_time)
         
                 if price_dict is None:
@@ -630,7 +611,6 @@ class MaaS(Agent):
                     else:
                         print(f"{company_name} not available at this time.")
             else:
-                print(f"calculate_time_and_price_to_station_or_destination: Testing for options_without_maas for the step")
                 price_dict = self.service_provider_agent.get_shared_service_price(mode, start_time)
         
                 if price_dict is None:
@@ -650,14 +630,12 @@ class MaaS(Agent):
                     else:
                         print(f"{company_name} not available at this time.")
 
-        print(f"Final Options: {options}")
         return options
 
 
 
     
     def calculate_public_transport_time_and_price(self, detailed_itinerary, bus_stop_speed, train_stop_speed, bus_stop_price, train_stop_price):
-        print("testing calculate_public_transport_time_and_price")
         total_time = 0
         total_price = 0
 
@@ -700,7 +678,6 @@ class MaaS(Agent):
         return total_time, total_price    
     
     def apply_maas_surcharge(self, total_price, payment_scheme):
-        print("testing apply_maas_surcharge")
         if payment_scheme == 'PAYG':
             # Calculate the dynamic PAYG surcharge
             PAYG_surcharge_percentage = self.calculate_dynamic_MaaS_surcharge(payment_scheme)
@@ -719,16 +696,12 @@ class MaaS(Agent):
         return total_price_with_surcharge, MaaS_surcharge
     
     def maas_options(self, payment_scheme, request_id, start_time, origin, destination):
-        print(f"Generating MaaS options for Request ID: {request_id}")
-        print(f"Origin: {origin}, Destination: {destination}, Start Time: {start_time}, Payment Scheme: {payment_scheme}")
         
         # Step 1: Find the optimal public transport route
         detailed_itinerary = self.build_detailed_itinerary(self.find_optimal_route(origin, destination), origin, destination)
-        print(f"Detailed Itinerary: {detailed_itinerary}")
         
         # Step 2: Calculate time, price, and route options for 'to station' segment
         to_station_options = self.calculate_time_and_price_to_station_or_destination(detailed_itinerary[0], start_time)
-        print(f"To Station Options: {to_station_options}")
         
         # Step 3: Calculate the total time and price for the public transport segment (train + transfer)
         public_transport_time, public_transport_price = self.calculate_public_transport_time_and_price(
@@ -738,19 +711,15 @@ class MaaS(Agent):
             bus_stop_price=self.service_provider_agent.get_public_service_price('bus', start_time),
             train_stop_price=self.service_provider_agent.get_public_service_price('train', start_time)
         )
-        print(f"Public Transport Time: {public_transport_time}, Public Transport Price: {public_transport_price}")
         
         # Step 4: Calculate time, price, and route options for 'to destination' segment
         to_destination_options = self.calculate_time_and_price_to_station_or_destination(detailed_itinerary[-1], start_time)
-        print(f"To Destination Options: {to_destination_options}")
         
         # Step 5: Combine the options to generate full routes
         maas_options = []
 
         for to_station_option in to_station_options:
-            print(f"Processing To Station Option: {to_station_option}")
             for to_destination_option in to_destination_options:
-                print(f"Processing To Destination Option: {to_destination_option}")
                 
                 total_time = (
                     to_station_option[3]  # Time for 'to station'
@@ -762,11 +731,9 @@ class MaaS(Agent):
                     + public_transport_price  # Price for public transport
                     + to_destination_option[4]  # Price for 'to destination'
                 )
-                print(f"Total Time: {total_time}, Total Price: {total_price}")
                 
                 # Apply MaaS surcharge to the total price
                 final_total_price, maas_surcharge = self.apply_maas_surcharge(total_price, payment_scheme)
-                print(f"Final Total Price: {final_total_price}, MaaS Surcharge: {maas_surcharge}")
                 
                 # Extract shortest route for 'to station' and 'to destination'
                 to_station_route = to_station_option[5]  # Shortest route for 'to station'
@@ -780,7 +747,6 @@ class MaaS(Agent):
                     final_total_price,  # Final total price after surcharge
                     maas_surcharge  # MaaS surcharge
                 ]
-                print(f"MaaS Option: {maas_option}")
                 
                 # Append the final option list with the request_id, detailed_itinerary, and MaaS options
                 maas_options.append([request_id, detailed_itinerary] + [maas_option])
@@ -790,7 +756,6 @@ class MaaS(Agent):
             if request_id in commuter.requests:
                 commuter.requests[request_id]['travel_options_with_maas'] = maas_options
                 
-        print(f"Generated MaaS Options: {maas_options}")
         # Return all generated MaaS options
         return maas_options
 
@@ -800,12 +765,8 @@ class MaaS(Agent):
     ################################### Confirm Booking Options #############################################
     ########################################################################################################
     def book_service(self, request_id, ranked_options, current_step, availability_dict):
-        print(f"[DEBUG] Starting book_service with Request ID: {request_id}")
         for commuter in self.commuter_agents:
-            print(f"[DEBUG] Checking commuter: {commuter.unique_id}")
-            print(f"[DEBUG] Commuter Requests: {commuter.requests}")
             if request_id in commuter.requests:
-                print("Correct id found in the requests")
                 for option in ranked_options:
                     subsidy = option[-1]  # Extract the subsidy from the ranked option
                     if "maas" in option[1]:  # This indicates a MaaS option
@@ -816,8 +777,6 @@ class MaaS(Agent):
                         )
 
                         if maas_option:
-                            print(f"[DEBUG] MaaS option found for Request ID: {request_id}")
-
                             # Remove overwriting request_id here
 
                             detailed_itinerary = maas_option[1]
@@ -828,14 +787,6 @@ class MaaS(Agent):
                             maas_surcharge = maas_option_details[4]
                             to_station_info = maas_option_details[0]
                             to_destination_info = maas_option_details[1]
-
-                            # Debug information
-                            print(f"[DEBUG] MaaS Booking Details:")
-                            print(f"    Total Time: {total_time}")
-                            print(f"    Final Total Price: {final_total_price}")
-                            print(f"    MaaS Surcharge: {maas_surcharge}")
-                            print(f"    To Station Info: {to_station_info}")
-                            print(f"    To Destination Info: {to_destination_info}")
 
                             # Record the MaaS booking and update availability if necessary
                             self.record_maas_or_non_maas_booking(
@@ -859,7 +810,6 @@ class MaaS(Agent):
                                 commuter, 
                                 request_id, 
                             ):
-                                print(f"[DEBUG] MaaS booking confirmed for Request ID: {request_id}")
                                 return True, availability_dict
                             else:
                                 print(f"[DEBUG] MaaS booking confirmation failed for Request ID: {request_id}")
@@ -881,11 +831,6 @@ class MaaS(Agent):
                             print(f"Error accessing travel options: {e}, request_id: {request_id}, travel_options: {commuter.requests[request_id]['travel_options_without_maas']}")
                             continue
 
-                        print(f"[DEBUG] Non-MaaS option selected for Request ID: {request_id}")
-                        print(f"    Mode: {mode_company}")
-                        print(f"    Route: {route}")
-                        print(f"    Price: {price}")
-                        print(f"    Time: {time}")
 
                         if mode_company == 'public_route' or mode_company == 'walk_route':
                             if self.confirm_booking_non_maas(commuter, request_id, mode_company, route, price):  # Pass 'time'
@@ -918,7 +863,6 @@ class MaaS(Agent):
                                     all_steps_available = False
                                     break
                                 availability_check_key = f'{chosen_company}_{step_key}'
-                                print(f"Checking availability for '{availability_check_key}': {availability_dict.get(availability_check_key)}")
                                 if availability_dict.get(availability_check_key, 0) < 1:
                                     all_steps_available = False
                                     break
@@ -954,7 +898,6 @@ class MaaS(Agent):
                                             list(range(start_time, start_time + duration)),
                                             route
                                         )
-                                        print(f"Booking recorded for request {request_id}")
                                         return True, availability_dict
                                 else:
                                     print(f"Booking confirmation failed for request {request_id}")
@@ -965,15 +908,8 @@ class MaaS(Agent):
 
 
     def record_maas_or_non_maas_booking(self, commuter, request_id, mode_company, final_total_price, start_time, duration, route, to_station_info, to_destination_info, maas_surcharge, availability_dict, current_step, subsidy):
-        print(f"record_maas_or_non_maas_booking called with mode_company={mode_company}")
 
         if mode_company == "MaaS_Bundle":  # This is a MaaS option
-            # Log the MaaS option booking
-            print(f"Logging MaaS booking for request {request_id}, commuter_id={commuter.unique_id}")
-
-            # Debugging the passed information
-            print(f"[DEBUG] to_station_info: {to_station_info}")
-            print(f"[DEBUG] to_destination_info: {to_destination_info}")
 
             # Correctly use the data from the MaaS option for the record
             selected_route = {
@@ -991,8 +927,6 @@ class MaaS(Agent):
             # Update the commuter's request with the selected MaaS option
             commuter.requests[request_id]['selected_route'] = selected_route
             commuter.requests[request_id]['status'] = 'Service Selected'
-
-            print(f"[DEBUG] Selected route stored for Request ID {request_id}: {selected_route}")
             
             # Call record_service_booking to ensure the service is logged in the ServiceBookingLog
             self.record_service_booking(commuter, request_id, selected_route, subsidy)
@@ -1003,7 +937,6 @@ class MaaS(Agent):
 
             # Additionally, record the share service details if applicable
             if to_station_info and ('Uber' in to_station_info[0] or 'Bike' in to_station_info[0]):
-                print(f"Recording share service booking for 'to station': {to_station_info}")
                 self.record_share_service_booking(
                     commuter,
                     request_id,
@@ -1014,7 +947,6 @@ class MaaS(Agent):
                     route_details=to_station_route  # Pass the relevant route details for 'to station'
                 )
             if to_destination_info and ('Uber' in to_destination_info[0] or 'Bike' in to_destination_info[0]):
-                print(f"Recording share service booking for 'to destination': {to_destination_info}")
                 self.record_share_service_booking(
                     commuter,
                     request_id,
@@ -1026,7 +958,6 @@ class MaaS(Agent):
                 )
 
         else:  # This is a non-MaaS option
-            print(f"Logging Non-MaaS booking for request {request_id}, commuter_id={commuter.unique_id}")
                     # Gather the non-MaaS booking information
             selected_route = {
                 'route': route,
@@ -1081,18 +1012,6 @@ class MaaS(Agent):
         # Convert UUID request_id to a string
         request_id_str = str(request_id)
 
-        # Debugging information
-        print(f"[DEBUG] Preparing to record share service booking:")
-        print(f"    Commuter ID: {commuter.unique_id}")
-        print(f"    Request ID: {request_id_str}")
-        print(f"    Company Name: {company_name}")
-        print(f"    Provider ID: {provider_id}")
-        print(f"    Mode ID: {mode_id}")
-        print(f"    Start Time: {start_time}")
-        print(f"    Duration: {duration}")
-        print(f"    Affected Steps: {affected_steps}")
-        print(f"    Route Details: {route_details}")
-
         # Call to record the booking in ShareServiceBookingLog with the correct route details parameter
         try:
             with self.Session() as session:
@@ -1119,7 +1038,6 @@ class MaaS(Agent):
                 )
                 session.add(new_booking)
                 session.commit()
-                print(f"[DEBUG] Successfully recorded share service booking for Commuter ID {commuter.unique_id}, Request ID {request_id_str}")
 
         except Exception as e:
             print(f"[ERROR] Failed to record share service booking: {e}")
@@ -1173,21 +1091,6 @@ class MaaS(Agent):
             maas_surcharge = 0  # No MaaS surcharge for non-MaaS options
             total_time = selected_route['time']
 
-        # Debugging the booking info before trying to insert
-        print(f"[DEBUG] Preparing to insert service booking:")
-        print(f"    commuter_id={commuter.unique_id}")
-        print(f"    payment_scheme={payment_scheme}")
-        print(f"    request_id={request_id}")
-        print(f"    start_time={start_time}")
-        print(f"    record_company_name={record_company_name}")
-        print(f"    route_details={route_details}")
-        print(f"    total_price={total_price}")
-        print(f"    maas_surcharge={maas_surcharge}")
-        print(f"    total_time={total_time}")
-        print(f"    origin_coordinates={origin_coordinates}")
-        print(f"    destination_coordinates={destination_coordinates}")
-        print(f"    to_station_info={to_station_info}")
-        print(f"    to_destination_info={to_destination_info}")
 
         # Create a new booking log entry
         new_booking = ServiceBookingLog(
@@ -1219,10 +1122,8 @@ class MaaS(Agent):
                 if existing_booking:
                     print(f"Booking already exists for commuter_id {commuter.unique_id}, request_id {request_id}. Skipping insert.")
                 else:
-                    print(f"[DEBUG] Inserting new booking for commuter_id={commuter.unique_id}, request_id={request_id}")
                     session.add(new_booking)
                     session.commit()
-                    print(f"[DEBUG] Successfully inserted booking for commuter_id={commuter.unique_id}, request_id={request_id}")
 
         except SQLAlchemyError as e:
             print(f"[ERROR] Error recording service booking: {e}")
@@ -1231,7 +1132,6 @@ class MaaS(Agent):
 
 
         result = commuter.accept_service(request_id)
-        print(f"[DEBUG] Booking confirmation result: {result}")
         return result
 
 
