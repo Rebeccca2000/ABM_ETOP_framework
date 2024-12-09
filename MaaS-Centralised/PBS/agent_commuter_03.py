@@ -147,21 +147,6 @@ class Commuter(Agent):
                 'mode': combined_mode  # The combined mode string
             }
 
-        # Calculate the probabilities for each travel option
-        print("calling calculate_mode_choice_probabilities for rank serviec options")
-        print(f" so now the combined travel options are:{combined_travel_options}")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
-        print("THE END for COMBINED TRAVEL OPTIONS")
 
         probabilities = self.calculate_mode_choice_probabilities(combined_travel_options, request_id)
 

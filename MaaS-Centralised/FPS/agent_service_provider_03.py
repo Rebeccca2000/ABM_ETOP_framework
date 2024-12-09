@@ -197,34 +197,57 @@ class ServiceProvider(Agent):
 
 
     def record_booking_log(self, commuter_id, request_id, company_name, start_time, duration, affected_steps, route_details):
+        # Extract the actual company name from the mode string
+        if '_' in company_name:
+            if company_name.split('_')[0] == 'car' or company_name.split('_')[0] == 'bike':
+                # Split 'car_UberLike1_route' and get 'UberLike1'
+                company_name = company_name.split('_')[1]
+            else:
+                print(f"This is either a {company_name} so no need to record in share services table")
+                return  # Add return here to exit the function for non-shared services
+        
         provider_table = self.get_service_table(company_name)
         if provider_table is None:
             print(f"No provider table found for service name: {company_name}")
             return
 
         with self.Session() as session:
-            service = session.query(provider_table).filter_by(company_name=company_name).first()
-            if service:
-                mode_id = service.mode_id
-                provider_id = service.provider_id
+            try:
+                # First check if a booking already exists for this request_id
+                existing_booking = session.query(ShareServiceBookingLog).filter_by(
+                    request_id=str(request_id)
+                ).first()
 
-                booking_log = ShareServiceBookingLog(
-                    commuter_id=commuter_id,
-                    request_id=str(request_id),
-                    mode_id=mode_id,
-                    provider_id=provider_id,
-                    company_name=company_name,
-                    start_time=start_time,
-                    duration=duration,
-                    affected_steps=affected_steps,
-                    route_details=route_details if route_details else []  # Store an empty list if no route details
-                )
-                session.add(booking_log)
-                session.commit()
-            else:
-                print(f"No service found for company name: {company_name} in table: {provider_table}")
+                if existing_booking:
+                    print(f"Booking already exists for request_id {request_id}. Skipping record.")
+                    return
 
+                # If no existing booking, proceed with creating new booking
+                service = session.query(provider_table).filter_by(company_name=company_name).first()
+                if service:
+                    mode_id = service.mode_id
+                    provider_id = service.provider_id
 
+                    booking_log = ShareServiceBookingLog(
+                        commuter_id=commuter_id,
+                        request_id=str(request_id),
+                        mode_id=mode_id,
+                        provider_id=provider_id,
+                        company_name=company_name,
+                        start_time=start_time,
+                        duration=duration,
+                        affected_steps=affected_steps,
+                        route_details=route_details if route_details else []
+                    )
+                    session.add(booking_log)
+                    session.commit()
+                    print(f"Successfully recorded booking for request_id {request_id}")
+                else:
+                    print(f"No service found for company name: {company_name} in table: {provider_table}")
+                    
+            except Exception as e:
+                print(f"Error recording booking log: {e}")
+                session.rollback()
     def get_service_table(self, service_name):
         service_tables = {
             'UberLike1': UberLike1,

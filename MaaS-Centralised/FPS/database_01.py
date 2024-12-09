@@ -1,4 +1,5 @@
-DB_CONNECTION_STRING = 'sqlite:///service_provider_database_1.db'
+from agent_subsidy_pool import SubsidyPoolConfig
+DB_CONNECTION_STRING = 'sqlite:///service_provider_database_2.db'
 SIMULATION_STEPS = 3
 # #####################################Control for commuters#################################
 num_commuters = 100
@@ -82,7 +83,7 @@ ASC_VALUES = {
     'bike': 0,    # Refined value for biking
     'car': 0,     # Refined value for car
     'public': 0,    # Refined value for public transport
-    'maas': 0,      # Refined value for MaaS bundle
+    'maas': 10000,      # Refined value for MaaS bundle
     'default': 0     # Default value for any mode not covered
 }
 
@@ -139,6 +140,14 @@ subsidy_dataset = {
     'high': {'bike': 0.5, 'car': 0.5, 'MaaS_Bundle': 0.5},
 }
 #More policy can be applied here, such as subsidy for the disabled ppel to have more access to Uber
+# For daily subsidy pool
+daily_config = SubsidyPoolConfig('daily', 1000)  # 1000 units per day
+
+# For weekly subsidy pool (Mon-Fri)
+weekly_config = SubsidyPoolConfig('weekly', 5000)  # 5000 units per week
+
+# For monthly subsidy pool
+monthly_config = SubsidyPoolConfig('monthly', 20000)  # 20000 units per month
 ####################################Control for providers#############################################
 public_price_table = {
     'train': {'on_peak': 2, 'off_peak': 1.5},

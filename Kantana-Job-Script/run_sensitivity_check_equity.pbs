@@ -15,12 +15,16 @@
 
 # Make sure to navigate to the directory containing sensitivity_check_equity_2.py
 # before submitting with qsub, e.g.:
-# cd ~/MaaS-Simulation/MaaS-Centralised
-# qsub ../Kantana-Job-Script/run_sensitivity_check_equity.pbs
+# cd ~/MaaS-Simulation/MaaS-Centralised/FPS
+# qsub ../../Kantana-Job-Script/run_sensitivity_check_equity.pbs
+# THis is how you can check status:
+# qstat -u z5247491
+
+
 
 cd $PBS_O_WORKDIR
 
 module load python/3.8
 
 # Execute the Python script
-python ~/MaaS-Simulation/MaaS-Centralised/PBS/sensitivity_check_equity_2.py
+python ~/MaaS-Simulation/MaaS-Centralised/FPS/sensitivity_check_equity_2.py

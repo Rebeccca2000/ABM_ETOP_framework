@@ -26,7 +26,7 @@ from database_01 import num_commuters, grid_width, grid_height, income_weights, 
         UberLike2_cpacity, UberLike2_price, \
         BikeShare1_capacity, BikeShare1_price, \
         BikeShare2_capacity, BikeShare2_price, \
-        subsidy_dataset
+        subsidy_dataset, daily_config,weekly_config,monthly_config
 from sqlalchemy import create_engine
 from agent_service_provider_initialisation_03 import CommuterInfoLog
 import json
@@ -55,7 +55,7 @@ class MobilityModel(Model):
                 uber_like2_capacity, uber_like2_price, 
                 bike_share1_capacity, bike_share1_price, 
                 bike_share2_capacity, bike_share2_price, 
-                subsidy_dataset):
+                subsidy_dataset,subsidy_config):
         self.db_engine = create_engine(db_connection_string)
         self.Session = scoped_session(sessionmaker(bind=self.db_engine))
         self.session = self.Session()
@@ -83,6 +83,7 @@ class MobilityModel(Model):
         self.data_disability_weights = data_disability_weights
         self.data_tech_access_weights = data_tech_access_weights
         self.chance_for_inserting_random_traffic = CHANCE_FOR_INSERTING_RANDOM_TRAFFIC
+        self.subsidy_config = subsidy_config
         ##################################################################################
         ################# Initialisation for the commuter agent###########################
         ##################################################################################
@@ -190,7 +191,8 @@ class MobilityModel(Model):
                                 CONGESTION_ALPHA = self.congestion_alpha,\
                                 CONGESTION_BETA= self.congestion_beta, \
                                 CONGESTION_CAPACITY = self.congestion_capacity, \
-                                CONGESTION_T_IJ_FREE_FLOW = self.conjestion_t_ij_free_flow)
+                                CONGESTION_T_IJ_FREE_FLOW = self.conjestion_t_ij_free_flow,\
+                                subsidy_config = self.subsidy_config)
         self.schedule.add(self.maas_agent)
         
         
@@ -339,7 +341,7 @@ class MobilityModel(Model):
                 start_time = current_step + random.randint(0, 5)
                 travel_purpose = random.choice(['work', 'school', 'shopping', 'leisure', 'medical'])
                 commuter.create_request(request_id, origin, destination, start_time, travel_purpose)
-                print(f"Commuter {commuter.unique_id} created request from {origin} to {destination} starting at {start_time}")
+                # print(f"Commuter {commuter.unique_id} created request from {origin} to {destination} starting at {start_time}")
                 return True
             else:
                 return False
@@ -366,18 +368,18 @@ class MobilityModel(Model):
                         # MaaS agent generates travel options for each request
                         
                         travel_options_without_MaaS = self.maas_agent.options_without_maas(request_id, request['start_time'], request['origin'], request['destination'])
-                        print(f"Generated travel options for request {request_id}: \nWithout MaaS: {travel_options_without_MaaS}")
+                        # print(f"Generated travel options for request {request_id}: \nWithout MaaS: {travel_options_without_MaaS}")
 
                         travel_options_with_MaaS = self.maas_agent.maas_options(commuter.payment_scheme, request_id, request['start_time'], request['origin'], request['destination'])
 
-                        print(f"Generated travel options for request {request_id}: \nWith MaaS: {travel_options_with_MaaS}")
+                        # print(f"Generated travel options for request {request_id}: \nWith MaaS: {travel_options_with_MaaS}")
 
                         # Commuter ranks the travel options
                         ranked_options = commuter.rank_service_options(travel_options_without_MaaS, travel_options_with_MaaS, request_id)
-                        print(f"Ranked options for request {request_id}: {ranked_options}")
+                        # print(f"Ranked options for request {request_id}: {ranked_options}")
 
                         if ranked_options != []:  # Only attempt booking if there are ranked options available
-                            print(f"Attempting to book service for request {request_id}")
+                            # print(f"Attempting to book service for request {request_id}")
                             # MaaS agent attempts to book the highest-ranked service using ranked_options
                             booking_success, availability_dict = self.maas_agent.book_service(request_id, ranked_options, self.current_step, availability_dict)
                             if booking_success:
@@ -387,7 +389,7 @@ class MobilityModel(Model):
                         else:
                             print(f"No viable options for request {request_id}.")
                 except Exception as e:
-                    print(f"Error processing request {request_id}: {e}")
+                    print(f"Error in MobilityModel processing request {request_id}: {e}")
 
             commuter.update_location()
             commuter.check_travel_status()  # Once the commuter arrives at the destination, increase the availability back
@@ -467,98 +469,101 @@ grid = CanvasGrid(agent_portrayal, database_01.grid_width, database_01.grid_heig
 engine = create_engine(DB_CONNECTION_STRING)
 Session = sessionmaker(bind=engine)
 
-# server = ModularServer(
-#     MobilityModel,
-#     [grid, CommuteCountElement()],
-#     "Mobility Model",
-#     {'db_connection_string': DB_CONNECTION_STRING,
-#     'num_commuters': num_commuters,
-#     'grid_width': 55,
-#     'grid_height': 55,
-#     'data_income_weights': [0.5, 0.3, 0.2],
-#     'data_health_weights': [0.9, 0.1],
-#     'data_payment_weights': [0.8, 0.2],
-#     'data_age_distribution': {(18, 25): 0.2, (26, 35): 0.3, (36, 45): 0.2, (46, 55): 0.15, (56, 65): 0.1, (66, 75): 0.05},
-#     'data_disability_weights': [0.2, 0.8],
-#     'data_tech_access_weights': [0.95, 0.05],
-#     'subsidy_dataset': {
-#             'low': {'bike': 0.1, 'car': 0.05, 'MaaS_Bundle': 0.4},
-#             'middle': {'bike': 0.3, 'car': 0.01, 'MaaS_Bundle': 0.5},
-#             'high': {'bike': 0.4, 'car': 0, 'MaaS_Bundle': 0.6}
-#         },
-#     'CHANCE_FOR_INSERTING_RANDOM_TRAFFIC': 0.2,
-#     'ASC_VALUES': {'car': 0, 'bike': 0, 'public': 0, 'walk': 0, 'maas': 0, 'default': 0},
-#     'UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS': {'beta_C': -0.05, 'beta_T': -0.06},
-#     'UTILITY_FUNCTION_BASE_COEFFICIENTS': {'beta_C': -0.05, 'beta_T': -0.06, 'beta_W': -0.01, 'beta_A': -0.01, 'alpha': -0.01},
-#     'PENALTY_COEFFICIENTS': {'disability_bike_walk': 0.8, 'age_health_bike_walk': 0.3, 'no_tech_access_car_bike': 0.1},
-#     'AFFORDABILITY_THRESHOLDS': {'low': 25, 'middle': 85, 'high': 250},
-#     'FLEXIBILITY_ADJUSTMENTS': {'low': 1.05, 'medium': 1.0, 'high': 0.95},
-#     'VALUE_OF_TIME': {'low': 9.64, 'middle': 23.7, 'high': 67.2},
-#     'public_price_table': {'train': {'on_peak': 2, 'off_peak': 1.5}, 'bus': {'on_peak': 1, 'off_peak': 0.8}},
-#     'ALPHA_VALUES': {'UberLike1': 0.5, 'UberLike2': 0.5, 'BikeShare1': 0.5, 'BikeShare2': 0.5},
-#     'DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS': {'S_base': 0.08, 'alpha': 0.2, 'delta': 0.5},
-#     'BACKGROUND_TRAFFIC_AMOUNT': 70,
-#     'CONGESTION_ALPHA': 0.25,
-#     'CONGESTION_BETA': 4,
-#     'CONGESTION_CAPACITY': 4,
-#     'CONGESTION_T_IJ_FREE_FLOW': 2,
-#     'uber_like1_capacity': 20,
-#     'uber_like1_price': 4,
-#     'uber_like2_capacity': 19,
-#     'uber_like2_price': 3,
-#     'bike_share1_capacity': 15,
-#     'bike_share1_price': 0.5,
-#     'bike_share2_capacity': 12,
-#     'bike_share2_price': 0.2}
-# )
+server = ModularServer(
+    MobilityModel,
+    [grid, CommuteCountElement()],
+    "Mobility Model",
+    {'db_connection_string': DB_CONNECTION_STRING,
+    'num_commuters': num_commuters,
+    'grid_width': 55,
+    'grid_height': 55,
+    'data_income_weights': [0.5, 0.3, 0.2],
+    'data_health_weights': [0.9, 0.1],
+    'data_payment_weights': [0.8, 0.2],
+    'data_age_distribution': {(18, 25): 0.2, (26, 35): 0.3, (36, 45): 0.2, (46, 55): 0.15, (56, 65): 0.1, (66, 75): 0.05},
+    'data_disability_weights': [0.2, 0.8],
+    'data_tech_access_weights': [0.95, 0.05],
+    'subsidy_dataset': {
+            'low': {'bike': 0.1, 'car': 0.05, 'MaaS_Bundle': 0.4},
+            'middle': {'bike': 0.3, 'car': 0.01, 'MaaS_Bundle': 0.5},
+            'high': {'bike': 0.4, 'car': 0, 'MaaS_Bundle': 0.6}
+        },
+    'CHANCE_FOR_INSERTING_RANDOM_TRAFFIC': 0.2,
+    'ASC_VALUES': {'car': 0, 'bike': 0, 'public': 0, 'walk': 0, 'maas': 0, 'default': 0},
+    'UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS': {'beta_C': -0.05, 'beta_T': -0.06},
+    'UTILITY_FUNCTION_BASE_COEFFICIENTS': {'beta_C': -0.05, 'beta_T': -0.06, 'beta_W': -0.01, 'beta_A': -0.01, 'alpha': -0.01},
+    'PENALTY_COEFFICIENTS': {'disability_bike_walk': 0.8, 'age_health_bike_walk': 0.3, 'no_tech_access_car_bike': 0.1},
+    'AFFORDABILITY_THRESHOLDS': {'low': 25, 'middle': 85, 'high': 250},
+    'FLEXIBILITY_ADJUSTMENTS': {'low': 1.05, 'medium': 1.0, 'high': 0.95},
+    'VALUE_OF_TIME': {'low': 9.64, 'middle': 23.7, 'high': 67.2},
+    'public_price_table': {'train': {'on_peak': 2, 'off_peak': 1.5}, 'bus': {'on_peak': 1, 'off_peak': 0.8}},
+    'ALPHA_VALUES': {'UberLike1': 0.5, 'UberLike2': 0.5, 'BikeShare1': 0.5, 'BikeShare2': 0.5},
+    'DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS': {'S_base': 0.08, 'alpha': 0.2, 'delta': 0.5},
+    'BACKGROUND_TRAFFIC_AMOUNT': 70,
+    'CONGESTION_ALPHA': 0.25,
+    'CONGESTION_BETA': 4,
+    'CONGESTION_CAPACITY': 4,
+    'CONGESTION_T_IJ_FREE_FLOW': 2,
+    'uber_like1_capacity': 20,
+    'uber_like1_price': 4,
+    'uber_like2_capacity': 19,
+    'uber_like2_price': 3,
+    'bike_share1_capacity': 15,
+    'bike_share1_price': 0.5,
+    'bike_share2_capacity': 12,
+    'bike_share2_price': 0.2,
+    'subsidy_dataset': subsidy_dataset,
+    'subsidy_config': daily_config}
+)
 
-# server.port = 8521
-# server.launch()
+server.port = 8521
+server.launch()
 
-# if __name__ == "__main__":
-#     model = MobilityModel(db_connection_string=DB_CONNECTION_STRING, num_commuters=num_commuters)
-#     model.run_model(SIMULATION_STEPS)
+if __name__ == "__main__":
+    model = MobilityModel(db_connection_string=DB_CONNECTION_STRING, num_commuters=num_commuters)
+    model.run_model(SIMULATION_STEPS)
 
-# else:
-#     server.launch()
+else:
+    server.launch()
 
 # Runner Code for the MobilityModel
-if __name__ == "__main__":
-    model = MobilityModel(
-        db_connection_string=DB_CONNECTION_STRING,
-        num_commuters=num_commuters,
-        grid_width=grid_width,
-        grid_height=grid_height,
-        data_income_weights=income_weights,
-        data_health_weights=health_weights,
-        data_payment_weights=payment_weights,
-        data_age_distribution=age_distribution,
-        data_disability_weights=disability_weights,
-        data_tech_access_weights=tech_access_weights,
-        CHANCE_FOR_INSERTING_RANDOM_TRAFFIC=CHANCE_FOR_INSERTING_RANDOM_TRAFFIC,
-        ASC_VALUES=ASC_VALUES,
-        UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS=UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS,
-        UTILITY_FUNCTION_BASE_COEFFICIENTS=UTILITY_FUNCTION_BASE_COEFFICIENTS,
-        PENALTY_COEFFICIENTS=PENALTY_COEFFICIENTS,
-        AFFORDABILITY_THRESHOLDS=AFFORDABILITY_THRESHOLDS,
-        FLEXIBILITY_ADJUSTMENTS=FLEXIBILITY_ADJUSTMENTS,
-        VALUE_OF_TIME=VALUE_OF_TIME,
-        public_price_table=public_price_table,
-        ALPHA_VALUES=ALPHA_VALUES,
-        DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS=DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS,
-        BACKGROUND_TRAFFIC_AMOUNT=BACKGROUND_TRAFFIC_AMOUNT,
-        CONGESTION_ALPHA=CONGESTION_ALPHA,
-        CONGESTION_BETA=CONGESTION_BETA,
-        CONGESTION_CAPACITY=CONGESTION_CAPACITY,
-        CONGESTION_T_IJ_FREE_FLOW=CONGESTION_T_IJ_FREE_FLOW,
-        uber_like1_capacity=UberLike1_cpacity, 
-        uber_like1_price = UberLike1_price, 
-        uber_like2_capacity = UberLike2_cpacity, 
-        uber_like2_price = UberLike2_price, 
-        bike_share1_capacity = BikeShare1_capacity, 
-        bike_share1_price = BikeShare1_price, 
-        bike_share2_capacity = BikeShare2_capacity,
-        bike_share2_price = BikeShare2_price, 
-        subsidy_dataset = subsidy_dataset
-    )
-    model.run_model(SIMULATION_STEPS)
+# if __name__ == "__main__":
+#     model = MobilityModel(
+#         db_connection_string=DB_CONNECTION_STRING,
+#         num_commuters=num_commuters,
+#         grid_width=grid_width,
+#         grid_height=grid_height,
+#         data_income_weights=income_weights,
+#         data_health_weights=health_weights,
+#         data_payment_weights=payment_weights,
+#         data_age_distribution=age_distribution,
+#         data_disability_weights=disability_weights,
+#         data_tech_access_weights=tech_access_weights,
+#         CHANCE_FOR_INSERTING_RANDOM_TRAFFIC=CHANCE_FOR_INSERTING_RANDOM_TRAFFIC,
+#         ASC_VALUES=ASC_VALUES,
+#         UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS=UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS,
+#         UTILITY_FUNCTION_BASE_COEFFICIENTS=UTILITY_FUNCTION_BASE_COEFFICIENTS,
+#         PENALTY_COEFFICIENTS=PENALTY_COEFFICIENTS,
+#         AFFORDABILITY_THRESHOLDS=AFFORDABILITY_THRESHOLDS,
+#         FLEXIBILITY_ADJUSTMENTS=FLEXIBILITY_ADJUSTMENTS,
+#         VALUE_OF_TIME=VALUE_OF_TIME,
+#         public_price_table=public_price_table,
+#         ALPHA_VALUES=ALPHA_VALUES,
+#         DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS=DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS,
+#         BACKGROUND_TRAFFIC_AMOUNT=BACKGROUND_TRAFFIC_AMOUNT,
+#         CONGESTION_ALPHA=CONGESTION_ALPHA,
+#         CONGESTION_BETA=CONGESTION_BETA,
+#         CONGESTION_CAPACITY=CONGESTION_CAPACITY,
+#         CONGESTION_T_IJ_FREE_FLOW=CONGESTION_T_IJ_FREE_FLOW,
+#         uber_like1_capacity=UberLike1_cpacity, 
+#         uber_like1_price = UberLike1_price, 
+#         uber_like2_capacity = UberLike2_cpacity, 
+#         uber_like2_price = UberLike2_price, 
+#         bike_share1_capacity = BikeShare1_capacity, 
+#         bike_share1_price = BikeShare1_price, 
+#         bike_share2_capacity = BikeShare2_capacity,
+#         bike_share2_price = BikeShare2_price, 
+#         subsidy_dataset = subsidy_dataset,
+#         subsidy_config = daily_config
+#     )
+#     model.run_model(SIMULATION_STEPS)

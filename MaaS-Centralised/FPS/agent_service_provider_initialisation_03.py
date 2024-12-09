@@ -151,19 +151,21 @@ class CommuterInfoLog(Base):
     requests = Column(JSON, nullable=True)  # Store requests as JSON
     services_owned = Column(JSON, nullable=True)  # Store services_owned as JSON
 
-class GovernmentSubsidyLog(Base):
-    __tablename__ = 'government_subsidy_log'
-    commuter_id = Column(Integer, primary_key=True)
-    service_id = Column(Integer, nullable=False)
-    commuter_age = Column(Integer, nullable=False)
-    health_condition = Column(String, nullable=False)
-    income_level = Column(String, nullable=False)
-    mode_choice = Column(String, nullable=False)
-    total_original_price = Column(Float, nullable=False)
-    subsidy_id = Column(String, nullable=False)  # Can store multiple subsidy IDs as a comma-separated string or use JSON
-    price_after_subsidy = Column(Float, nullable=False)
-    policy_name = Column(String, nullable=False)  # Can store multiple subsidy IDs as a comma-separated string or use JSON
-    target_group = Column(String, nullable=False)
+
+# In agent_service_provider_initialisation_03.py
+class SubsidyUsageLog(Base):
+    __tablename__ = 'subsidy_usage_log'
+    
+    id = Column(Integer, primary_key=True)
+    commuter_id = Column(Integer, nullable=False)
+    request_id = Column(String, nullable=False)
+    subsidy_amount = Column(Float, nullable=False)
+    mode = Column(String, nullable=False)
+    timestamp = Column(Integer, nullable=False)
+    day = Column(Integer, nullable=False)
+    week = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+    period_type = Column(String, nullable=False)  # 'daily', 'weekly', or 'monthly'
 
 # # Create the engine and reset the database
 # engine = create_engine(DB_CONNECTION_STRING)

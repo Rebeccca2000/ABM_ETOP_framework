@@ -11,7 +11,7 @@ from agent_service_provider_initialisation_03 import reset_database
 from agent_service_provider_initialisation_03 import CommuterInfoLog, ServiceBookingLog
 import multiprocessing as mp 
 import os
-
+from agent_subsidy_pool import SubsidyPoolConfig
 # Edited on 18/11/24, now it is suitable for running on Kantana
 # Global configuration
 # DB_CONNECTION_STRING = 'sqlite:///service_provider_database_1.db'
@@ -106,6 +106,8 @@ def run_single_simulation(params):
             bike_share2_capacity=params['bike_share2_capacity'],
             bike_share2_price=params['bike_share2_price'],
             subsidy_dataset=params['subsidy_dataset'],
+            subsidy_config = params['subsidy_config']
+
         )
         model.run_model(params['simulation_steps'])
 
@@ -141,20 +143,20 @@ def run_single_simulation(params):
         # Optionally, clean up the database file after the run if not needed
         os.remove(db_path)
 
-# def run_multiple_simulations(parameter_sets):
-#     """
-#     Run multiple simulations and collect Gini index and total subsidy for low-income group.
-#     """
-#     low_income_gini_results = []
-#     low_income_total_subsidies = []
+def run_multiple_simulations(parameter_sets):
+    """
+    Run multiple simulations and collect Gini index and total subsidy for low-income group.
+    """
+    low_income_gini_results = []
+    low_income_total_subsidies = []
 
-#     for i, params in enumerate(parameter_sets):
-#         print(f"Running simulation #{i + 1}")
-#         usage, subsidy = run_single_simulation(params)
-#         low_income_gini_results.append(usage)
-#         low_income_total_subsidies.append(subsidy)
+    for i, params in enumerate(parameter_sets):
+        print(f"Running simulation #{i + 1}")
+        usage, subsidy = run_single_simulation(params)
+        low_income_gini_results.append(usage)
+        low_income_total_subsidies.append(subsidy)
 
-#     return low_income_gini_results, low_income_total_subsidies
+    return low_income_gini_results, low_income_total_subsidies
 
 def plot_gini_vs_subsidies(gini_results, total_subsidies, title, color, output_file='gini_vs_subsidy_plot.png'):
     """
@@ -214,173 +216,70 @@ base_parameters = {
     'bike_share1_price': 1,
     'bike_share2_capacity': 12,
     'bike_share2_price': 1.2,
-    'simulation_steps': SIMULATION_STEPS
+    'simulation_steps': SIMULATION_STEPS,
+    'subsidy_dataset': {
+            'low': {'bike': 0.1, 'car': 0.05, 'MaaS_Bundle': 0.1},
+            'middle': {'bike': 0.3, 'car': 0.01, 'MaaS_Bundle': 0.5},
+            'high': {'bike': 0.4, 'car': 0, 'MaaS_Bundle': 0.02}
+        }
 }
 
 parameter_sets = [
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.1, 'car': 0.05, 'MaaS_Bundle': 0.1},
-            'middle': {'bike': 0.3, 'car': 0.01, 'MaaS_Bundle': 0.5},
-            'high': {'bike': 0.4, 'car': 0, 'MaaS_Bundle': 0.02}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 1000)
     },
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.6, 'car': 0.8, 'MaaS_Bundle': 0.55},
-            'middle': {'bike': 0.25, 'car': 0.1, 'MaaS_Bundle': 0.45},
-            'high': {'bike': 0.05, 'car': 0.05, 'MaaS_Bundle': 0.01}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 2000)
     },
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.8, 'car': 0.6, 'MaaS_Bundle': 0.5},
-            'middle': {'bike': 0.2, 'car': 0.2, 'MaaS_Bundle': 0.4},
-            'high': {'bike': 0.1, 'car': 0.1, 'MaaS_Bundle': 0.1}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 10000)
     },
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.4, 'car': 0.3, 'MaaS_Bundle': 0.5},
-            'middle': {'bike': 0.4, 'car': 0.3, 'MaaS_Bundle': 0.3},
-            'high': {'bike': 0.35, 'car': 0.15, 'MaaS_Bundle': 0.4}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 2500)
     },
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.6, 'car': 0.7, 'MaaS_Bundle': 0.65},
-            'middle': {'bike': 0.35, 'car': 0.2, 'MaaS_Bundle': 0.3},
-            'high': {'bike': 0.01, 'car': 0.01, 'MaaS_Bundle': 0.02}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 6000)
     },
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.2, 'car': 0.1, 'MaaS_Bundle': 0.25},
-            'middle': {'bike': 0.3, 'car': 0.15, 'MaaS_Bundle': 0.4},
-            'high': {'bike': 0.2, 'car': 0.1, 'MaaS_Bundle': 0.15}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 15000)
     },
 ]
 more_parameter_sets = [
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.1, 'car': 0.02, 'MaaS_Bundle': 0.05},
-            'middle': {'bike': 0.25, 'car': 0.05, 'MaaS_Bundle': 0.35},
-            'high': {'bike': 0.35, 'car': 0.15, 'MaaS_Bundle': 0.1}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 9000)
     },
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.7, 'car': 0.85, 'MaaS_Bundle': 0.75},
-            'middle': {'bike': 0.3, 'car': 0.1, 'MaaS_Bundle': 0.4},
-            'high': {'bike': 0.35, 'car': 0.2, 'MaaS_Bundle': 0.2}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 25000)
     },
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.4, 'car': 0.2, 'MaaS_Bundle': 0.7},
-            'middle': {'bike': 0.35, 'car': 0.25, 'MaaS_Bundle': 0.4},
-            'high': {'bike': 0.25, 'car': 0.1, 'MaaS_Bundle': 0.05}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 30000)
     },
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.2, 'car': 0.8, 'MaaS_Bundle': 0.35},
-            'middle': {'bike': 0.35, 'car': 0.1, 'MaaS_Bundle': 0.4},
-            'high': {'bike': 0.4, 'car': 0.2, 'MaaS_Bundle': 0.1}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 40000)
     },
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.25, 'car': 0.1, 'MaaS_Bundle': 0.4},
-            'middle': {'bike': 0.3, 'car': 0.15, 'MaaS_Bundle': 0.45},
-            'high': {'bike': 0.35, 'car': 0.05, 'MaaS_Bundle': 0.2}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 20000)
     },
     {
         **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.4, 'car': 0.15, 'MaaS_Bundle': 0.6},
-            'middle': {'bike': 0.35, 'car': 0.2, 'MaaS_Bundle': 0.2},
-            'high': {'bike': 0.25, 'car': 0.25, 'MaaS_Bundle': 0.04}
-        }
+        'subsidy_config': SubsidyPoolConfig('daily', 8000)
     },
 ]
 
-additional_parameter_sets = [
-    {
-        **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.15, 'car': 0.03, 'MaaS_Bundle': 0.07},
-            'middle': {'bike': 0.2, 'car': 0.07, 'MaaS_Bundle': 0.3},
-            'high': {'bike': 0.3, 'car': 0.1, 'MaaS_Bundle': 0.15}
-        }
-    },
-    {
-        **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.5, 'car': 0.75, 'MaaS_Bundle': 0.6},
-            'middle': {'bike': 0.4, 'car': 0.2, 'MaaS_Bundle': 0.35},
-            'high': {'bike': 0.2, 'car': 0.1, 'MaaS_Bundle': 0.3}
-        }
-    },
-    {
-        **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.3, 'car': 0.15, 'MaaS_Bundle': 0.4},
-            'middle': {'bike': 0.4, 'car': 0.25, 'MaaS_Bundle': 0.25},
-            'high': {'bike': 0.15, 'car': 0.05, 'MaaS_Bundle': 0.08}
-        }
-    },
-    {
-        **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.35, 'car': 0.2, 'MaaS_Bundle': 0.5},
-            'middle': {'bike': 0.3, 'car': 0.15, 'MaaS_Bundle': 0.3},
-            'high': {'bike': 0.3, 'car': 0.2, 'MaaS_Bundle': 0.05}
-        }
-    },
-    {
-        **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.2, 'car': 0.1, 'MaaS_Bundle': 0.3},
-            'middle': {'bike': 0.35, 'car': 0.15, 'MaaS_Bundle': 0.35},
-            'high': {'bike': 0.25, 'car': 0.1, 'MaaS_Bundle': 0.1}
-        }
-    },
-    {
-        **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.1, 'car': 0.25, 'MaaS_Bundle': 0.3},
-            'middle': {'bike': 0.2, 'car': 0.3, 'MaaS_Bundle': 0.25},
-            'high': {'bike': 0.35, 'car': 0.15, 'MaaS_Bundle': 0.1}
-        }
-    },
-    {
-        **base_parameters,
-        'subsidy_dataset': {
-            'low': {'bike': 0.6, 'car': 0.2, 'MaaS_Bundle': 0.5},
-            'middle': {'bike': 0.3, 'car': 0.1, 'MaaS_Bundle': 0.4},
-            'high': {'bike': 0.15, 'car': 0.3, 'MaaS_Bundle': 0.05}
-        }
-    }
-]
 
 # Combine with the original set if needed
 parameter_sets += more_parameter_sets
-# Combine all parameter sets
-parameter_sets += additional_parameter_sets
 
 def run_parallel_simulations(parameter_sets, num_cpus):
     with mp.Pool(processes=num_cpus) as pool:

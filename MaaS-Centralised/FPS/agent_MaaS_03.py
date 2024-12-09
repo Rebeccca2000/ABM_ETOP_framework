@@ -2,16 +2,16 @@ from mesa import Agent
 import heapq
 import math
 from mesa.space import MultiGrid
-from agent_service_provider_initialisation_03 import ShareServiceBookingLog, ServiceBookingLog
+from agent_service_provider_initialisation_03 import SubsidyUsageLog, ShareServiceBookingLog, ServiceBookingLog
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func
 import uuid
 import random
 class MaaS(Agent):
     def __init__(self, unique_id, model, service_provider_agent, commuter_agents, DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS, \
                  BACKGROUND_TRAFFIC_AMOUNT, stations, routes, transfers, num_commuters, grid_width, grid_height, CONGESTION_ALPHA,\
-                CONGESTION_BETA, CONGESTION_CAPACITY, CONGESTION_T_IJ_FREE_FLOW):
+                CONGESTION_BETA, CONGESTION_CAPACITY, CONGESTION_T_IJ_FREE_FLOW,subsidy_config):
         super().__init__(unique_id, model)  # Initialize the base class
         self.service_provider_agent = service_provider_agent  # Store the reference to the service provider agent
         self.commuter_agents = commuter_agents  # Store the reference to the commuter agent
@@ -31,6 +31,11 @@ class MaaS(Agent):
         self.congestion_beta= CONGESTION_BETA
         self.congestion_capacity = CONGESTION_CAPACITY
         self.conjestion_t_ij_free_flow = CONGESTION_T_IJ_FREE_FLOW
+        # Existing initialization code...
+        self.subsidy_config = subsidy_config
+        self.current_subsidy_pool = subsidy_config.total_amount
+        self.last_reset_step = 0
+        self.total_subsidies_given = 0  # Track subsidies given in current period
 
     def find_nearest_station_any_mode(self, point):
         min_distance = float('inf')
@@ -765,6 +770,8 @@ class MaaS(Agent):
     ################################### Confirm Booking Options #############################################
     ########################################################################################################
     def book_service(self, request_id, ranked_options, current_step, availability_dict):
+    
+        self.manage_subsidy_pool()  # Make sure pool is properly managed
         for commuter in self.commuter_agents:
             if request_id in commuter.requests:
                 for option in ranked_options:
@@ -810,6 +817,13 @@ class MaaS(Agent):
                                 commuter, 
                                 request_id, 
                             ):
+                                self.record_subsidy_usage(
+                                    commuter_id=commuter.unique_id,
+                                    request_id=request_id,
+                                    subsidy_amount=subsidy,
+                                    mode='maas',
+                                    timestamp=current_step
+                                    )
                                 return True, availability_dict
                             else:
                                 print(f"[DEBUG] MaaS booking confirmation failed for Request ID: {request_id}")
@@ -849,6 +863,13 @@ class MaaS(Agent):
                                     current_step=current_step,
                                     subsidy=subsidy  # Save subsidy
                                 )
+                                self.record_subsidy_usage(
+                                commuter_id=commuter.unique_id,
+                                request_id=request_id,
+                                subsidy_amount=subsidy,
+                                mode='public_subsidy',
+                                timestamp=current_step
+                                )
                                 return True, availability_dict
                         else:
                             chosen_company = mode_company.split('_')[1]
@@ -884,6 +905,13 @@ class MaaS(Agent):
                                         current_step=current_step,
                                         subsidy=subsidy  # Save subsidy
                                     )
+                                    self.record_subsidy_usage(
+                                        commuter_id=commuter.unique_id,
+                                        request_id=request_id,
+                                        subsidy_amount=subsidy,
+                                        mode=mode_company,
+                                        timestamp=current_step
+                                    )
                                     if 'Uber' in mode_company or 'Bike' in mode_company:
                                         for step in range(start_time, end_check_step + 1):
                                             step_key = step - current_step
@@ -898,7 +926,7 @@ class MaaS(Agent):
                                             list(range(start_time, start_time + duration)),
                                             route
                                         )
-                                        return True, availability_dict
+                                    return True, availability_dict
                                 else:
                                     print(f"Booking confirmation failed for request {request_id}")
 
@@ -979,7 +1007,6 @@ class MaaS(Agent):
                 list(range(start_time, start_time + duration)),
                 route
             )
-
 
     def record_share_service_booking(self, commuter, request_id, service_info, start_time, availability_dict, current_step, route_details):
         company_name, time, price, detailed_route = service_info
@@ -1142,3 +1169,112 @@ class MaaS(Agent):
             'price': price
         }
         return commuter.accept_service_non_maas(request_id, selected_route)
+###################################################################################################################
+#######################################Fixed Pool Subsisdy ########################################################
+###################################################################################################################
+    def manage_subsidy_pool(self):
+        current_step = self.model.get_current_step()
+        current_day = current_step // 144
+        current_week = current_day // 7
+        day_of_week = current_day % 7
+
+        # Calculate current usage from log
+        with self.Session() as session:
+            total_used = session.query(func.sum(SubsidyUsageLog.subsidy_amount))\
+                .filter(SubsidyUsageLog.week == current_week)\
+                .scalar() or 0
+
+        # Reset pool at beginning of week
+        if self.subsidy_config.is_reset_time(current_step, self.last_reset_step):
+            self.current_subsidy_pool = self.subsidy_config.total_amount
+            self.last_reset_step = current_step
+        else:
+            self.current_subsidy_pool = self.subsidy_config.total_amount - total_used
+
+        # No subsidies on weekends
+        if day_of_week >= 5:
+            self.current_subsidy_pool = 0
+
+    def check_subsidy_availability(self, requested_amount):
+        """
+        Check subsidy availability by calculating total used subsidies from SubsidyUsageLog
+        """
+        current_step = self.model.get_current_step()
+        current_day = current_step // 144
+        current_week = current_day // 7
+        day_of_week = current_day % 7
+
+        # Check if it's a weekday
+        if not self.subsidy_config.is_subsidy_available(day_of_week):
+            print("Weekend - No subsidies available")
+            return 0
+
+        # Calculate total subsidies already used in current period
+        with self.Session() as session:
+            if self.subsidy_config.pool_type == 'weekly':
+                total_used = session.query(func.sum(SubsidyUsageLog.subsidy_amount))\
+                    .filter(SubsidyUsageLog.week == current_week)\
+                    .scalar() or 0
+            elif self.subsidy_config.pool_type == 'daily':
+                total_used = session.query(func.sum(SubsidyUsageLog.subsidy_amount))\
+                    .filter(SubsidyUsageLog.day == current_day)\
+                    .scalar() or 0
+            elif self.subsidy_config.pool_type == 'monthly':
+                total_used = session.query(func.sum(SubsidyUsageLog.subsidy_amount))\
+                    .filter(SubsidyUsageLog.month == current_day // 30)\
+                    .scalar() or 0
+
+        remaining_pool = self.subsidy_config.total_amount - total_used
+        print(f"Total subsidies used: {total_used}, Remaining in pool: {remaining_pool}")
+
+        # If there's enough remaining in the pool
+        if remaining_pool >= requested_amount:
+            print(f"Providing subsidy: {requested_amount}")
+            return requested_amount
+        elif remaining_pool > 0:
+            print(f"Providing partial subsidy: {remaining_pool}")
+            return remaining_pool
+        else:
+            print("Subsidy pool depleted")
+            return 0
+
+    def get_subsidy_statistics(self):
+        """
+        Get current statistics about subsidy usage
+        """
+        current_step = self.model.get_current_step()
+        steps_per_day = 144
+        current_day = current_step // steps_per_day
+        day_of_week = current_day % 7
+        
+        stats = {
+            'pool_type': self.subsidy_config.pool_type,
+            'total_pool': self.subsidy_config.total_amount,
+            'remaining_pool': self.current_subsidy_pool,
+            'total_given': self.total_subsidies_given,
+            'current_day': current_day,
+            'day_of_week': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][day_of_week],
+            'subsidies_available_today': self.subsidy_config.is_subsidy_available(day_of_week)
+        }
+        
+        return stats
+    
+    def record_subsidy_usage(self, commuter_id, request_id, subsidy_amount, mode, timestamp):
+        day = timestamp // 144
+        week = day // 7
+        month = day // 30
+        
+        with self.Session() as session:
+            usage_log = SubsidyUsageLog(
+                commuter_id=commuter_id,
+                request_id=str(request_id),
+                subsidy_amount=subsidy_amount,
+                mode=mode,
+                timestamp=timestamp,
+                day=day,
+                week=week,
+                month=month,
+                period_type=self.subsidy_config.pool_type
+            )
+            session.add(usage_log)
+            session.commit()
