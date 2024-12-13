@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -N sensitivity_check_FSIR
+#PBS -l select=1:ncpus=4:mem=8gb
+#PBS -l walltime=02:30:00
+#PBS -j oe
+#PBS -m ae
+#PBS -M z5247491@unsw.edu.au
+
+# Explanation:
+# Job name: sensitivity_check_FSIR
+# Resources requested: 1 node with 4 CPUs and 8GB memory (adjusted based on usage)
+# Time limit: 2hr30mins 
+# Combine stdout and stderr into one file
+# Email notifications on abort or end
+
+# Make sure to navigate to the directory containing sensitivity_check_equity_2.py
+# before submitting with qsub, e.g.:
+# cd ~/MaaS-Simulation/MaaS-Centralised/FPS
+# qsub ../../Kantana-Job-Script/run_sensitivity_check_FSIR.pbs
+# THis is how you can check status:
+# qstat -u z5247491
+
+
+
+cd $PBS_O_WORKDIR
+
+module load python/3.8
+
+# Execute the Python script
+python ~/MaaS-Simulation/MaaS-Centralised/FPS/sensitivity_check_FSIR.py

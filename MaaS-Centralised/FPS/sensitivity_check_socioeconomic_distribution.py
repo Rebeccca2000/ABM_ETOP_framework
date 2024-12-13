@@ -69,6 +69,7 @@ def run_single_simulation(params):
     """
     Run a single simulation and calculate equity metrics
     """
+    print(f"Starting simulation with PID {os.getpid()}")
     db_path = f"service_provider_database_{os.getpid()}.db"
     db_connection_string = f"sqlite:///{db_path}"
     engine = create_engine(db_connection_string)
@@ -76,17 +77,34 @@ def run_single_simulation(params):
     session = Session()
     
     try:
-        # Initialize and run model as in your original code
-        reset_database(engine=engine, session=session, **params)
-        model = MobilityModel(db_connection_string=db_connection_string, **params)
-        model.run_model(params['simulation_steps'])
+        # Extract parameters for reset_database
+        reset_db_params = {
+            'uber_like1_capacity': params['uber_like1_capacity'],
+            'uber_like1_price': params['uber_like1_price'],
+            'uber_like2_capacity': params['uber_like2_capacity'],
+            'uber_like2_price': params['uber_like2_price'],
+            'bike_share1_capacity': params['bike_share1_capacity'],
+            'bike_share1_price': params['bike_share1_price'],
+            'bike_share2_capacity': params['bike_share2_capacity'],
+            'bike_share2_price': params['bike_share2_price']
+        }
+        
+        # Initialize database
+        reset_database(engine=engine, session=session, **reset_db_params)
+        
+        # Extract parameters for MobilityModel
+        model_params = params.copy()
+        simulation_steps = model_params.pop('simulation_steps')  # Remove and store simulation_steps
+        
+        # Initialize and run model
+        model = MobilityModel(db_connection_string=db_connection_string, **model_params)
+        model.run_model(simulation_steps)  # Use simulation_steps here
         
         # Query subsidies by income level
         subsidy_by_income = {}
         user_counts = {}
         
         for income_level in ['low', 'middle', 'high']:
-            # Get total subsidies for this income level
             subsidies = (
                 session.query(func.sum(ServiceBookingLog.government_subsidy))
                 .join(CommuterInfoLog, CommuterInfoLog.commuter_id == ServiceBookingLog.commuter_id)
@@ -94,7 +112,6 @@ def run_single_simulation(params):
                 .scalar() or 0
             )
             
-            # Get user count for this income level
             users = (
                 session.query(func.count(func.distinct(CommuterInfoLog.commuter_id)))
                 .filter(CommuterInfoLog.income_level == income_level)
@@ -104,9 +121,11 @@ def run_single_simulation(params):
             subsidy_by_income[income_level] = float(subsidies)
             user_counts[income_level] = users
         
-        # Calculate both SDI metrics
+        # Calculate metrics
         sdi_norm = calculate_sdi_normalized(subsidy_by_income, user_counts)
         sdi_theil = calculate_sdi_theil(subsidy_by_income, user_counts)
+        
+        print(f"Simulation {os.getpid()} completed successfully")
         
         return {
             'sdi_normalized': sdi_norm,
@@ -115,9 +134,14 @@ def run_single_simulation(params):
             'user_distribution': user_counts
         }
         
+    except Exception as e:
+        print(f"Error in simulation {os.getpid()}: {str(e)}")
+        raise
+        
     finally:
         session.close()
-        os.remove(db_path)
+        if os.path.exists(db_path):
+            os.remove(db_path)
 
 def run_parallel_simulations(parameter_sets, num_cpus):
     """
@@ -126,33 +150,149 @@ def run_parallel_simulations(parameter_sets, num_cpus):
     with mp.Pool(processes=num_cpus) as pool:
         results = pool.map(run_single_simulation, parameter_sets)
     return results
+def create_enhanced_plots(results, output_dir='equity_analysis_plots'):
+    """
+    Create comprehensive visualizations for SDI analysis using only matplotlib
+    """
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Create DataFrame from results
+    df = pd.DataFrame([{
+        'SDI_Normalized': r['sdi_normalized'],
+        'SDI_Theil': r['sdi_theil'],
+        'subsidy_distribution': r['subsidy_distribution'],  # lowercase
+        'user_distribution': r['user_distribution']  # lowercase
+    } for r in results])
+    
+    # 1. Box Plot (instead of violin plot)
+    plt.figure(figsize=(12, 6))
+    plt.boxplot([df['SDI_Normalized'], df['SDI_Theil']], 
+                labels=['SDI_Normalized', 'SDI_Theil'])
+    plt.title('Distribution Comparison of SDI Metrics')
+    plt.ylabel('Value')
+    plt.grid(True, alpha=0.3)
+    plt.savefig(os.path.join(output_dir, 'sdi_box_plot.png'))
+    plt.close()
+    
+    # 2. Scatter Plot with Trends
+    subsidy_pools = np.linspace(1000, 40000, len(df))
+    
+    plt.figure(figsize=(12, 6))
+    
+    # Plot SDI Normalized
+    plt.scatter(subsidy_pools, df['SDI_Normalized'], 
+               label='SDI Normalized', alpha=0.6, color='blue')
+    z = np.polyfit(subsidy_pools, df['SDI_Normalized'], 1)
+    p = np.poly1d(z)
+    plt.plot(subsidy_pools, p(subsidy_pools), 
+            linestyle='--', color='blue', label='Normalized Trend')
+    
+    # Plot SDI Theil
+    plt.scatter(subsidy_pools, df['SDI_Theil'], 
+               label='SDI Theil', alpha=0.6, color='red')
+    z = np.polyfit(subsidy_pools, df['SDI_Theil'], 1)
+    p = np.poly1d(z)
+    plt.plot(subsidy_pools, p(subsidy_pools), 
+            linestyle='--', color='red', label='Theil Trend')
+    
+    plt.xlabel('Subsidy Pool Size')
+    plt.ylabel('SDI Value')
+    plt.title('SDI Metrics vs Subsidy Pool Size')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(os.path.join(output_dir, 'sdi_trends.png'))
+    plt.close()
+    
+    # 3. Alternative to Heatmap: 2D Line Plot
+    plt.figure(figsize=(12, 6))
+    for income_level in ['low', 'middle', 'high']:
+        subsidies = [r['subsidy_distribution'][income_level] for r in results]  # lowercase
+        users = [r['user_distribution'][income_level] for r in results]  # lowercase
+        plt.plot(subsidies, users, 'o-', label=income_level)
+    
+    plt.xlabel('Subsidy Amount')
+    plt.ylabel('User Count')
+    plt.title('Subsidy vs User Distribution by Income Level')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(os.path.join(output_dir, 'subsidy_distribution.png'))
+    plt.close()
+    
+    # 4. CDF Plots
+    plt.figure(figsize=(12, 6))
+    
+    # Plot CDF for SDI Normalized
+    sorted_norm = np.sort(df['SDI_Normalized'])
+    cumulative_prob = np.arange(1, len(sorted_norm) + 1) / len(sorted_norm)
+    plt.plot(sorted_norm, cumulative_prob, 
+            label='SDI Normalized', linewidth=2, color='blue')
+    
+    # Plot CDF for SDI Theil
+    sorted_theil = np.sort(df['SDI_Theil'])
+    cumulative_prob = np.arange(1, len(sorted_theil) + 1) / len(sorted_theil)
+    plt.plot(sorted_theil, cumulative_prob, 
+            label='SDI Theil', linewidth=2, color='red')
+    
+    plt.xlabel('SDI Value')
+    plt.ylabel('Cumulative Probability')
+    plt.title('Cumulative Distribution of SDI Metrics')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(os.path.join(output_dir, 'sdi_cdf.png'))
+    plt.close()
+
+    # Print summary statistics
+    print("\nSummary Statistics:")
+    print("\nSDI Normalized:")
+    print(df['SDI_Normalized'].describe())
+    print("\nSDI Theil:")
+    print(df['SDI_Theil'].describe())
 
 def plot_equity_results(results, output_dir='equity_analysis_plots'):
     """
-    Create visualizations for the equity analysis
+    Create visualizations for the equity analysis with explicit file paths and debug prints
     """
-    os.makedirs(output_dir, exist_ok=True)
+    print("Starting to generate plots...")
     
-    # Extract results
+    # Create output directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"Created output directory: {output_dir}")
+    
+    # Extract results with validation
     sdi_norm_values = [r['sdi_normalized'] for r in results]
     sdi_theil_values = [r['sdi_theil'] for r in results]
     
-    # Plot SDI distributions
+    print(f"Extracted values for plotting:")
+    print(f"SDI Normalized values: {sdi_norm_values}")
+    print(f"SDI Theil values: {sdi_theil_values}")
+    
+    # Plot SDI normalized distribution
     plt.figure(figsize=(10, 6))
-    plt.hist(sdi_norm_values, bins=20, alpha=0.7, color='blue')
+    plt.hist(sdi_norm_values, bins=min(20, len(sdi_norm_values)), alpha=0.7, color='blue')
     plt.title('Distribution of Normalized SDI Values')
     plt.xlabel('SDI Normalized')
     plt.ylabel('Frequency')
-    plt.savefig(os.path.join(output_dir, 'sdi_normalized_dist.png'))
-    plt.close()
     
+    # Save with full path
+    normalized_plot_path = os.path.join(os.getcwd(), output_dir, 'sdi_normalized_dist.png')
+    plt.savefig(normalized_plot_path)
+    plt.close()
+    print(f"Saved normalized SDI plot to: {normalized_plot_path}")
+    
+    # Plot SDI Theil distribution
     plt.figure(figsize=(10, 6))
-    plt.hist(sdi_theil_values, bins=20, alpha=0.7, color='green')
+    plt.hist(sdi_theil_values, bins=min(20, len(sdi_theil_values)), alpha=0.7, color='green')
     plt.title('Distribution of Theil SDI Values')
     plt.xlabel('SDI Theil')
     plt.ylabel('Frequency')
-    plt.savefig(os.path.join(output_dir, 'sdi_theil_dist.png'))
+    
+    # Save with full path
+    theil_plot_path = os.path.join(os.getcwd(), output_dir, 'sdi_theil_dist.png')
+    plt.savefig(theil_plot_path)
     plt.close()
+    print(f"Saved Theil SDI plot to: {theil_plot_path}")
     
     # Create summary statistics
     summary = pd.DataFrame({
@@ -160,10 +300,12 @@ def plot_equity_results(results, output_dir='equity_analysis_plots'):
         'SDI_Theil': sdi_theil_values
     })
     
-    summary.describe().to_csv(os.path.join(output_dir, 'equity_metrics_summary.csv'))
-
+    # Save summary with full path
+    summary_path = os.path.join(os.getcwd(), output_dir, 'equity_metrics_summary.csv')
+    summary.describe().to_csv(summary_path)
+    print(f"Saved summary statistics to: {summary_path}")
 # Example parameter sets with varying subsidy configurations
-def generate_parameter_sets(base_parameters, num_sets=20):
+def generate_parameter_sets(base_parameters, num_sets):
     parameter_sets = []
     subsidy_pools = np.linspace(1000, 40000, num_sets)
     
@@ -215,17 +357,19 @@ if __name__ == "__main__":
     'bike_share2_price': 1.2,
     'simulation_steps': SIMULATION_STEPS,
     'subsidy_dataset': {
-            'low': {'bike': 0.1, 'car': 0.05, 'MaaS_Bundle': 0.1},
-            'middle': {'bike': 0.3, 'car': 0.01, 'MaaS_Bundle': 0.5},
-            'high': {'bike': 0.4, 'car': 0, 'MaaS_Bundle': 0.02}
+            'low': {'bike': 0.3, 'car': 0.35, 'MaaS_Bundle': 0.4},
+            'middle': {'bike': 0.3, 'car': 0.15, 'MaaS_Bundle': 0.3},
+            'high': {'bike': 0.4, 'car': 0.05, 'MaaS_Bundle': 0.2}
         }
     }
     
     # Generate parameter sets
-    parameter_sets = generate_parameter_sets(base_parameters)
+    parameter_sets = generate_parameter_sets(base_parameters, num_sets=30)
+    print(f"Generated {len(parameter_sets)} parameter sets")
     
     # Run simulations
-    num_cpus = mp.cpu_count() - 1  # Leave one CPU free
+    num_cpus = 4  
+    print(f"Starting analysis with {num_cpus} CPUs")
     results = run_parallel_simulations(parameter_sets, num_cpus)
     
     # Save results
@@ -234,3 +378,4 @@ if __name__ == "__main__":
     
     # Generate plots and summary statistics
     plot_equity_results(results)
+    create_enhanced_plots(results)
