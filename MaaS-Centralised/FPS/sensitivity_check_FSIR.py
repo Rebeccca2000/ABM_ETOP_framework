@@ -9,103 +9,167 @@ from agent_service_provider_initialisation_03 import reset_database, CommuterInf
 import multiprocessing as mp
 import os
 from agent_subsidy_pool import SubsidyPoolConfig
+from typing import Dict, List, Tuple
+from pandas.plotting import parallel_coordinates
 
 SIMULATION_STEPS = 144
 num_commuters = 120
 
+def normalize_with_bounds(value: float, min_val: float, max_val: float) -> float:
+    """Normalize values with proper handling of edge cases"""
+    if max_val == min_val:
+        return 0
+    return (value - min_val) / (max_val - min_val)
+
 def calculate_co2_reduction(session):
-    """Calculate CO2 reduction from mode shifts"""
+    """Calculate CO2 reduction with improved error handling and detailed logging"""
     emission_factors = {
-        1: 0.041,  # Train (kg CO2/km)
-        2: 0.089,  # Bus
-        3: 0.171,  # Car 
-        4: 0,      # Bike
-        5: 0       # Walk
+        'train': 0.041,
+        'bus': 0.089,
+        'car': 0.171,
+        'bike': 0,
+        'walk': 0,
+        'MaaS_Bundle': 0
     }
     
-    def calculate_distance(route_details):
-        """Calculate distance for a simple coordinate route"""
-        if not route_details or not isinstance(route_details, list):
-            return 0
-            
-        total_distance = 0
+    occupancy_rates = {
+        'train': 0.7,
+        'bus': 0.6,
+        'car': 1.2,
+        'bike': 1.0,
+        'walk': 1.0
+    }
+
+    def safely_calculate_distance(route_details):
+        """Safely calculate distance with comprehensive error handling"""
         try:
-            for i in range(len(route_details)-1):
-                x1, y1 = route_details[i]
-                x2, y2 = route_details[i+1]
-                total_distance += ((x2-x1)**2 + (y2-y1)**2)**0.5
-        except:
+            if not route_details:
+                return 0
+                
+            if isinstance(route_details, str):
+                try:
+                    route_details = eval(route_details)
+                except:
+                    return 0
+                    
+            if not isinstance(route_details, list):
+                return 0
+                
+            total_distance = 0
+            
+            # Handle nested route structures
+            if route_details and isinstance(route_details[0], (list, tuple)):
+                for i in range(len(route_details)-1):
+                    try:
+                        x1, y1 = route_details[i]
+                        x2, y2 = route_details[i+1]
+                        total_distance += ((x2-x1)**2 + (y2-y1)**2)**0.5
+                    except (IndexError, TypeError):
+                        continue
+            
+            return total_distance
+            
+        except Exception as e:
             return 0
-        return total_distance
 
     def process_public_transport_route(route_details):
-        """Process public transport route segments"""
-        mode_distances = {}
-        
-        for segment in route_details:
-            if segment[0] in ["to station", "transfer", "to destination"]:
-                # Walking segments
-                if len(segment) > 1 and isinstance(segment[1], list):
-                    if isinstance(segment[1][0], list):  # Contains coordinates
-                        distance = calculate_distance(segment[1][0])
-                    else:  # Contains start and end points
-                        distance = calculate_distance([segment[1][0], segment[1][1]])
-                    mode_distances['walk'] = mode_distances.get('walk', 0) + distance
+        """Process public transport route with improved error handling"""
+        try:
+            mode_distances = {}
+            
+            if not isinstance(route_details, list):
+                return mode_distances
+                
+            for segment in route_details:
+                try:
+                    if not isinstance(segment, (list, tuple)) or not segment:
+                        continue
+                        
+                    segment_type = segment[0]
                     
-            elif segment[0] == "train":
-                # Train segments
-                stations = segment[2]
-                distance = len(stations) * 5  # Standard distance between stations
-                mode_distances['train'] = mode_distances.get('train', 0) + distance
-                
-            elif segment[0] == "bus":
-                # Bus segments
-                stops = segment[2]
-                distance = len(stops) * 5  # Standard distance between stops
-                mode_distances['bus'] = mode_distances.get('bus', 0) + distance
-                
-        return mode_distances
+                    if segment_type in ["to station", "transfer", "to destination"]:
+                        if len(segment) > 1 and isinstance(segment[1], list):
+                            if isinstance(segment[1][0], list):
+                                distance = safely_calculate_distance(segment[1][0])
+                            else:
+                                distance = safely_calculate_distance([segment[1][0], segment[1][1]])
+                            mode_distances['walk'] = mode_distances.get('walk', 0) + distance
+                            
+                    elif segment_type in ["train", "bus"]:
+                        if len(segment) > 2:
+                            stops = segment[2]
+                            distance = len(stops) * 5
+                            mode_distances[segment_type] = mode_distances.get(segment_type, 0) + distance
+                            
+                except Exception as e:
+                    continue
+                    
+            return mode_distances
+            
+        except Exception as e:
+            return {}
 
     def process_maas_bundle(route_details, to_station, to_destination):
-        """Process MaaS bundle route segments"""
-        mode_distances = {}
-        
-        # Process to_station segment
-        if to_station:
-            mode = to_station[0]  # First element is mode type
-            route = to_station[3]  # Fourth element contains route
-            distance = calculate_distance(route)
-            mode_distances[mode] = mode_distances.get(mode, 0) + distance
-        
-        # Process main route
-        for segment in route_details:
-            if segment[0] in ["train", "bus"]:
-                mode = segment[0]
-                stations = segment[2]
-                distance = len(stations) * 5
-                mode_distances[mode] = mode_distances.get(mode, 0) + distance
-            elif segment[0] in ["to station", "transfer", "to destination"]:
-                if len(segment) > 1 and isinstance(segment[1], list):
-                    if isinstance(segment[1][0], list):
-                        distance = calculate_distance(segment[1][0])
-                    else:
-                        distance = calculate_distance([segment[1][0], segment[1][1]])
-                    mode_distances['walk'] = mode_distances.get('walk', 0) + distance
-        
-        # Process to_destination segment
-        if to_destination:
-            mode = to_destination[0]
-            route = to_destination[3]
-            distance = calculate_distance(route)
-            mode_distances[mode] = mode_distances.get(mode, 0) + distance
+        """Process MaaS bundle with improved error handling"""
+        try:
+            mode_distances = {}
             
-        return mode_distances
+            # Process to_station segment
+            if to_station:
+                try:
+                    mode = to_station[0]
+                    route = to_station[3]
+                    distance = safely_calculate_distance(route)
+                    mode_distances[mode] = mode_distances.get(mode, 0) + distance
+                except (IndexError, TypeError):
+                    pass
+            
+            # Process main route
+            if isinstance(route_details, list):
+                for segment in route_details:
+                    try:
+                        if not isinstance(segment, (list, tuple)) or not segment:
+                            continue
+                            
+                        segment_type = segment[0]
+                        
+                        if segment_type in ["train", "bus"]:
+                            if len(segment) > 2:
+                                stops = segment[2]
+                                distance = len(stops) * 5
+                                mode_distances[segment_type] = mode_distances.get(segment_type, 0) + distance
+                                
+                        elif segment_type in ["to station", "transfer", "to destination"]:
+                            if len(segment) > 1 and isinstance(segment[1], list):
+                                if isinstance(segment[1][0], list):
+                                    distance = safely_calculate_distance(segment[1][0])
+                                else:
+                                    distance = safely_calculate_distance([segment[1][0], segment[1][1]])
+                                mode_distances['walk'] = mode_distances.get('walk', 0) + distance
+                                
+                    except Exception as e:
+                        continue
+            
+            # Process to_destination segment
+            if to_destination:
+                try:
+                    mode = to_destination[0]
+                    route = to_destination[3]
+                    distance = safely_calculate_distance(route)
+                    mode_distances[mode] = mode_distances.get(mode, 0) + distance
+                except (IndexError, TypeError):
+                    pass
+                    
+            return mode_distances
+            
+        except Exception as e:
+            return {}
 
     total_co2_saved = 0
     total_subsidy = 0
     
     try:
-        query = session.query(
+        trips = session.query(
             ServiceBookingLog.request_id,
             ServiceBookingLog.record_company_name,
             ServiceBookingLog.route_details,
@@ -114,7 +178,7 @@ def calculate_co2_reduction(session):
             ServiceBookingLog.government_subsidy
         ).all()
 
-        for trip in query:
+        for trip in trips:
             try:
                 mode_distances = {}
                 
@@ -124,32 +188,36 @@ def calculate_co2_reduction(session):
                         trip.to_station,
                         trip.to_destination
                     )
-                    
                 elif trip.record_company_name == 'public':
                     mode_distances = process_public_transport_route(trip.route_details)
-                    
                 else:
-                    # Direct routes (bike, car, walk)
-                    distance = calculate_distance(trip.route_details)
+                    distance = safely_calculate_distance(trip.route_details)
                     mode_distances[trip.record_company_name] = distance
+
+                # Calculate CO2 with occupancy rates
+                baseline_co2 = sum(
+                    (dist * emission_factors['car']) / occupancy_rates['car']
+                    for dist in mode_distances.values()
+                )
                 
-                # Calculate CO2 savings
-                baseline_co2 = sum(dist * emission_factors[3] for dist in mode_distances.values())
-                actual_co2 = sum(dist * emission_factors[get_mode_id(mode)] for mode, dist in mode_distances.items())
+                actual_co2 = sum(
+                    (dist * emission_factors.get(mode, 0)) / occupancy_rates.get(mode, 1.0)
+                    for mode, dist in mode_distances.items()
+                )
+                
                 total_co2_saved += (baseline_co2 - actual_co2)
-                
-                # Add subsidy
+
+                # Process subsidy
                 if trip.government_subsidy:
                     try:
-                        if isinstance(trip.government_subsidy, (int, float)):
-                            total_subsidy += trip.government_subsidy
-                        else:
-                            total_subsidy += float(eval(str(trip.government_subsidy)))
+                        subsidy = float(trip.government_subsidy) if isinstance(trip.government_subsidy, (int, float)) else \
+                                 float(eval(str(trip.government_subsidy))) if isinstance(trip.government_subsidy, str) else 0
+                        total_subsidy += subsidy
                     except:
                         pass
-                            
+                        
             except Exception as e:
-                print(f"Error processing trip {trip.request_id}: {e}")
+                # Instead of printing error, silently continue
                 continue
                 
     except Exception as e:
@@ -157,7 +225,6 @@ def calculate_co2_reduction(session):
         return 0, 0
         
     return total_co2_saved, total_subsidy
-
 def get_mode_id(mode_name):
     """Convert mode/company name to mode_id based on TransportModes table.
     mode_id mappings:
@@ -171,7 +238,6 @@ def get_mode_id(mode_name):
         # Public transport modes
         'train': 1,
         'bus': 2,
-        'public': 1,  # Default to train if just "public"
         
         # Car services
         'UberLike1': 3,
@@ -188,45 +254,123 @@ def get_mode_id(mode_name):
         'transfer': 5
     }
     
-    return mode_map.get(mode_name, 3)  # Default to car (3) if unknown mode
-def calculate_pt_utilization(session):
-    """Calculate public transport utilization rate including both direct PT and MaaS bundle trips"""
-    
+    return mode_map.get(mode_name, 0)  # Default to car (3) if unknown mode
+def calculate_maas_utilization(session):
+    """Calculate MaaS bundle utilization rate with peak/off-peak differentiation"""
     try:
-        # First count total trips
-        total_trips = session.query(
-            func.count(ServiceBookingLog.request_id)
-        ).scalar() or 0
+        def is_peak_period(time_step):
+            time_step = time_step % 144  # 24 hours * 6 steps per hour
+            return (36 <= time_step < 60) or (90 <= time_step < 114)
 
-        # Count PT trips
-        pt_trips = session.query(
-            func.count(ServiceBookingLog.request_id)
-        ).filter(
-            (ServiceBookingLog.record_company_name == 'public') |
-            (ServiceBookingLog.record_company_name == 'MaaS_Bundle')
-        ).scalar() or 0
+        # Query all trips with their time periods
+        query = session.query(
+            ServiceBookingLog.record_company_name,
+            ServiceBookingLog.start_time
+        ).all()
 
-        return pt_trips / total_trips if total_trips > 0 else 0
+        peak_maas_trips = 0
+        peak_total_trips = 0
+        offpeak_maas_trips = 0
+        offpeak_total_trips = 0
+
+        for record_name, start_time in query:
+            is_peak = is_peak_period(start_time)
+            is_maas = record_name == 'MaaS_Bundle'
+            
+            if is_peak:
+                peak_total_trips += 1
+                if is_maas:
+                    peak_maas_trips += 1
+            else:
+                offpeak_total_trips += 1
+                if is_maas:
+                    offpeak_maas_trips += 1
+
+        # Calculate weighted utilization
+        peak_utilization = peak_maas_trips / peak_total_trips if peak_total_trips > 0 else 0
+        offpeak_utilization = offpeak_maas_trips / offpeak_total_trips if offpeak_total_trips > 0 else 0
+        
+        # Weight peak periods more heavily (60% peak, 40% off-peak)
+        weighted_utilization = (peak_utilization * 0.6 + offpeak_utilization * 0.4)
+        
+        return weighted_utilization
 
     except Exception as e:
-        print(f"Error calculating PT utilization: {e}")
+        print(f"Error calculating MaaS utilization: {e}")
         return 0
+def calculate_vkt_reduction_enhanced(session):
+    """Enhanced VKT reduction calculation using ShareServiceBookingLog data"""
+    try:
+        def calculate_distance(route_details):
+            """Calculate distance from route coordinates"""
+            if not route_details or not isinstance(route_details, list):
+                return 0
+                
+            total_distance = 0
+            try:
+                for i in range(len(route_details)-1):
+                    x1, y1 = route_details[i]
+                    x2, y2 = route_details[i+1]
+                    total_distance += ((x2-x1)**2 + (y2-y1)**2)**0.5
+            except:
+                return 0
+            return total_distance
 
-def calculate_vkt_reduction(session):
-    """Calculate Vehicle Kilometers Traveled reduction"""
-    baseline_query = session.query(
-        func.sum(ShareServiceBookingLog.duration)
-    ).filter(
-        ShareServiceBookingLog.mode_id == 3
-    ).scalar() or 0
-    
-    current_query = session.query(
-        func.sum(ShareServiceBookingLog.duration)
-    ).filter(
-        ShareServiceBookingLog.mode_id != 3
-    ).scalar() or 0
-    
-    return baseline_query - current_query
+        # Get car trips
+        car_trips = session.query(ShareServiceBookingLog).filter(
+            ShareServiceBookingLog.mode_id == 3  # Car mode
+        ).all()
+        
+        print(f"Number of car trips found: {len(car_trips)}")
+        
+        # Calculate total car distance
+        car_vkt = 0
+        for trip in car_trips:
+            if hasattr(trip, 'route_details') and trip.route_details:
+                route = trip.route_details
+                if isinstance(route, str):
+                    try:
+                        route = eval(route)  # Handle JSON string if needed
+                    except:
+                        continue
+                car_vkt += calculate_distance(route)
+        
+        print(f"Total car VKT: {car_vkt}")
+        
+        # Get all trips
+        all_trips = session.query(ShareServiceBookingLog).all()
+        print(f"Total number of trips: {len(all_trips)}")
+        
+        # Calculate total distance across all modes
+        total_distance = 0
+        for trip in all_trips:
+            if hasattr(trip, 'route_details') and trip.route_details:
+                route = trip.route_details
+                if isinstance(route, str):
+                    try:
+                        route = eval(route)  # Handle JSON string if needed
+                    except:
+                        continue
+                total_distance += calculate_distance(route)
+                
+        print(f"Total distance across all modes: {total_distance}")
+        
+        # Calculate reduction as percentage
+        if total_distance > 0:
+            reduction = (total_distance - car_vkt) / total_distance
+            print(f"VKT reduction: {reduction * 100:.2f}%")
+        else:
+            reduction = 0
+            print("No distance traveled")
+            
+        return reduction
+
+    except Exception as e:
+        import traceback
+        print(f"Error calculating VKT reduction: {str(e)}")
+        print("Full error traceback:")
+        print(traceback.format_exc())
+        return 0
 
 def calculate_time_value(session):
     """Calculate economic value of time saved"""
@@ -250,27 +394,49 @@ def calculate_time_value(session):
 def calculate_fsir(session, weights):
     """Calculate FSIR with component weights"""
     co2_reduction, total_subsidy = calculate_co2_reduction(session)
-    pt_utilization = calculate_pt_utilization(session)
-    vkt_reduction = calculate_vkt_reduction(session)
+    maas_utilization = calculate_maas_utilization(session) 
+    vkt_reduction = calculate_vkt_reduction_enhanced(session)
     time_value = calculate_time_value(session)
     
+    # Store min/max values for normalization
+    component_ranges = {
+        'co2': {'min': 0, 'max': max(co2_reduction, 1)},
+        'maas': {'min': 0, 'max': 1},
+        'vkt': {'min': -1, 'max': 1},
+        'time': {'min': 0, 'max': max(time_value, 1)}
+    }
+    
     # Normalize components
-    normalized_co2 = co2_reduction / total_subsidy if total_subsidy > 0 else 0
-    normalized_vkt = vkt_reduction / 1000  # Assuming 1000km as baseline
-    normalized_time = time_value / 10000  # Assuming $10000 as baseline
+    normalized = {
+        'co2': normalize_with_bounds(co2_reduction/total_subsidy if total_subsidy > 0 else 0,
+                                   component_ranges['co2']['min'],
+                                   component_ranges['co2']['max']),
+        'maas': maas_utilization,  
+        'vkt': normalize_with_bounds(vkt_reduction,
+                                   component_ranges['vkt']['min'],
+                                   component_ranges['vkt']['max']),
+        'time': normalize_with_bounds(np.log1p(time_value),
+                                    component_ranges['time']['min'],
+                                    component_ranges['time']['max'])
+    }
     
-    fsir = (
-        weights['alpha'] * normalized_co2 +
-        weights['beta'] * pt_utilization +
-        weights['gamma'] * normalized_vkt +
-        weights['delta'] * normalized_time
-    )
+    # Calculate interaction term
+    interaction = normalized['maas'] * normalized['vkt']
     
+    # Calculate final FSIR
+    fsir = (weights['alpha'] * normalized['co2'] +
+            weights['beta'] * normalized['maas'] +
+            weights['gamma'] * normalized['vkt'] +
+            weights['delta'] * np.log1p(normalized['time']) +
+            weights.get('eta', 0.1) * interaction)  # Add small weight for interaction
+            
     return fsir, {
         'co2_reduction': co2_reduction,
-        'pt_utilization': pt_utilization,
+        'maas_utilization': maas_utilization,
         'vkt_reduction': vkt_reduction,
-        'time_value': time_value
+        'time_value': time_value,
+        'normalized': normalized,
+        'interaction': interaction
     }
 
 def run_single_simulation(params):
@@ -320,61 +486,141 @@ def run_single_simulation(params):
         if os.path.exists(db_path):
             os.remove(db_path)
 
-def create_fsir_visualizations(results, output_dir='fsir_analysis_plots'):
-    """Create visualizations for FSIR analysis"""
+def create_enhanced_fsir_visualizations(results, output_dir='fsir_analysis_plots'):
+    """Create comprehensive visualizations for FSIR analysis with comprehensive error handling"""
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
+    # Create DataFrame from results with error handling
     df = pd.DataFrame([{
         'FSIR': r['fsir'],
         'Subsidy': r['subsidy_config'],
         'CO2_Reduction': r['components']['co2_reduction'],
-        'PT_Utilization': r['components']['pt_utilization'],
+        'MaaS_Utilization': r['components']['maas_utilization'],
         'VKT_Reduction': r['components']['vkt_reduction'],
         'Time_Value': r['components']['time_value']
     } for r in results])
     
-    # FSIR vs Subsidy Plot
-    plt.figure(figsize=(12, 6))
-    plt.scatter(df['Subsidy'], df['FSIR'], alpha=0.6)
-    plt.xlabel('Subsidy Pool Size')
-    plt.ylabel('FSIR Score')
-    plt.title('FSIR Score vs Subsidy Pool Size')
-    plt.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(output_dir, 'fsir_vs_subsidy.png'))
-    plt.close()
+    # Handle potential zero/invalid values
+    df = df.replace([np.inf, -np.inf], np.nan)
+    df = df.fillna(0)
     
-    # Component Contributions
-    components = ['CO2_Reduction', 'PT_Utilization', 'VKT_Reduction', 'Time_Value']
-    plt.figure(figsize=(12, 6))
-    for component in components:
-        plt.plot(df['Subsidy'], df[component], label=component)
-    plt.xlabel('Subsidy Pool Size')
-    plt.ylabel('Component Value')
-    plt.title('FSIR Component Contributions')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(output_dir, 'component_contributions.png'))
-    plt.close()
+    # Safely calculate CO2 per subsidy
+    df['CO2_per_subsidy'] = np.where(df['Subsidy'] > 0, 
+                                    df['CO2_Reduction'] / df['Subsidy'], 
+                                    0)
     
-    # Efficiency Metrics
-    plt.figure(figsize=(12, 6))
-    plt.scatter(df['CO2_Reduction'] / df['Subsidy'], 
-               df['PT_Utilization'], 
-               c=df['FSIR'], 
-               cmap='viridis')
-    plt.colorbar(label='FSIR Score')
-    plt.xlabel('CO2 Reduction per Subsidy Dollar')
-    plt.ylabel('Public Transport Utilization Rate')
-    plt.title('Efficiency Metrics')
-    plt.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(output_dir, 'efficiency_metrics.png'))
-    plt.close()
+    components = ['CO2_Reduction', 'MaaS_Utilization', 'VKT_Reduction', 'Time_Value']
     
-    # Save summary statistics
-    summary_stats = df.describe()
-    summary_stats.to_csv(os.path.join(output_dir, 'fsir_summary.csv'))
+    try:
+        # 1. Component Contributions Plot
+        plt.figure(figsize=(15, 8))
+        
+        # Create subsidy groups safely
+        unique_subsidies = df['Subsidy'].nunique()
+        n_groups = min(max(2, unique_subsidies), 10)
+        
+        if unique_subsidies > 1:
+            subsidy_groups = pd.qcut(df['Subsidy'], 
+                                   q=n_groups, 
+                                   labels=[f'G{i}' for i in range(n_groups)],
+                                   duplicates='drop')
+        else:
+            # Handle case with single unique value
+            subsidy_groups = pd.Series(['G0'] * len(df), index=df.index)
+        
+        # Normalize components with error handling
+        for comp in components:
+            range_val = df[comp].max() - df[comp].min()
+            df[f'{comp}_norm'] = np.where(range_val > 0,
+                                        (df[comp] - df[comp].min()) / range_val,
+                                        df[comp])
+        
+        # Create stacked bar chart
+        grouped_data = df.groupby(subsidy_groups)[[f'{comp}_norm' for comp in components]].mean()
+        bottom = np.zeros(len(grouped_data))
+        colors = ['#2ecc71', '#3498db', '#e74c3c', '#f1c40f']
+        
+        for i, comp in enumerate(components):
+            plt.bar(grouped_data.index, 
+                   grouped_data[f'{comp}_norm'], 
+                   bottom=bottom, 
+                   label=comp, 
+                   color=colors[i])
+            bottom += grouped_data[f'{comp}_norm']
+        
+        plt.title('FSIR Component Contributions by Subsidy Group')
+        plt.xlabel('Subsidy Groups (Low to High)')
+        plt.ylabel('Normalized Component Contribution')
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'component_contributions.png'))
+        plt.close()
+        
+        # 2. Scatter Plot with Trend Line
+        plt.figure(figsize=(12, 8))
+        
+        # Clean data for regression
+        mask = (df['CO2_per_subsidy'].notna() & 
+                df['MaaS_Utilization'].notna() & 
+                ~np.isinf(df['CO2_per_subsidy']) & 
+                ~np.isinf(df['MaaS_Utilization']))
+        
+        X = df.loc[mask, 'CO2_per_subsidy'].values
+        y = df.loc[mask, 'MaaS_Utilization'].values
+        
+        if len(X) > 1:  # Need at least 2 points for regression
+            # Use robust regression
+            from sklearn.linear_model import TheilSenRegressor
+            reg = TheilSenRegressor(random_state=42)
+            X_reshaped = X.reshape(-1, 1)
+            reg.fit(X_reshaped, y)
+            
+            # Create prediction line
+            X_plot = np.linspace(X.min(), X.max(), 100).reshape(-1, 1)
+            y_plot = reg.predict(X_plot)
+            
+            # Plot scatter and regression line
+            scatter = plt.scatter(X, y, c=df.loc[mask, 'FSIR'], cmap='viridis', alpha=0.6)
+            plt.plot(X_plot, y_plot, 'r--', alpha=0.8)
+        else:
+            # Fallback to simple scatter plot if regression isn't possible
+            scatter = plt.scatter(df['CO2_per_subsidy'], 
+                                df['MaaS_Utilization'],
+                                c=df['FSIR'],
+                                cmap='viridis',
+                                alpha=0.6)
+        
+        plt.colorbar(scatter, label='FSIR Score')
+        plt.title('Efficiency Metrics Relationship')
+        plt.xlabel('CO₂ Reduction per Subsidy Dollar')
+        plt.ylabel('MaaS Utilization Rate')
+        plt.savefig(os.path.join(output_dir, 'efficiency_metrics.png'))
+        plt.close()
+        
+        # Save summary statistics
+        summary = df.describe()
+        summary.to_csv(os.path.join(output_dir, 'fsir_summary_statistics.csv'))
+        
+    except Exception as e:
+        print(f"Error in visualization generation: {e}")
+        import traceback
+        traceback.print_exc()
 
+def run_fsir_analysis(parameter_sets):
+    """Run FSIR analysis with improved error handling"""
+    results = []
+    
+    for params in parameter_sets:
+        try:
+            result = run_single_simulation(params)
+            if result is not None:  # Check if simulation returned valid results
+                results.append(result)
+        except Exception as e:
+            print(f"Error in simulation with parameters {params}: {e}")
+            continue
+            
+    return results
 if __name__ == "__main__":
     # Define simulation parameters
     subsidy_pools = np.linspace(1000, 40000, 25)
@@ -448,4 +694,4 @@ if __name__ == "__main__":
         pickle.dump(results, f)
 
     # Generate visualizations
-    create_fsir_visualizations(results)
+    create_enhanced_fsir_visualizations(results)

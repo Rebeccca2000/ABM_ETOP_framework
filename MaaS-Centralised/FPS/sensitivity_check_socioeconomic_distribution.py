@@ -150,7 +150,7 @@ def run_parallel_simulations(parameter_sets, num_cpus):
     with mp.Pool(processes=num_cpus) as pool:
         results = pool.map(run_single_simulation, parameter_sets)
     return results
-def create_enhanced_plots(results, output_dir='equity_analysis_plots'):
+def create_enhanced_plots(results, output_dir='socioeconomic_distribution_plots'):
     """
     Create comprehensive visualizations for SDI analysis using only matplotlib
     """
@@ -249,7 +249,7 @@ def create_enhanced_plots(results, output_dir='equity_analysis_plots'):
     print("\nSDI Theil:")
     print(df['SDI_Theil'].describe())
 
-def plot_equity_results(results, output_dir='equity_analysis_plots'):
+def plot_equity_results(results, output_dir='socioeconomic_distribution_plots'):
     """
     Create visualizations for the equity analysis with explicit file paths and debug prints
     """
@@ -301,7 +301,7 @@ def plot_equity_results(results, output_dir='equity_analysis_plots'):
     })
     
     # Save summary with full path
-    summary_path = os.path.join(os.getcwd(), output_dir, 'equity_metrics_summary.csv')
+    summary_path = os.path.join(os.getcwd(), output_dir, 'socioeconomic_distribution_summary.csv')
     summary.describe().to_csv(summary_path)
     print(f"Saved summary statistics to: {summary_path}")
 # Example parameter sets with varying subsidy configurations
@@ -364,7 +364,7 @@ if __name__ == "__main__":
     }
     
     # Generate parameter sets
-    parameter_sets = generate_parameter_sets(base_parameters, num_sets=30)
+    parameter_sets = generate_parameter_sets(base_parameters, num_sets=13)
     print(f"Generated {len(parameter_sets)} parameter sets")
     
     # Run simulations
