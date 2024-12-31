@@ -12,8 +12,8 @@ from agent_subsidy_pool import SubsidyPoolConfig
 from typing import Dict, List, Tuple
 from pandas.plotting import parallel_coordinates
 
-SIMULATION_STEPS = 144
-num_commuters = 120
+SIMULATION_STEPS = 50
+num_commuters = 160
 
 def normalize_with_bounds(value: float, min_val: float, max_val: float) -> float:
     """Normalize values with proper handling of edge cases"""
@@ -623,7 +623,7 @@ def run_fsir_analysis(parameter_sets):
     return results
 if __name__ == "__main__":
     # Define simulation parameters
-    subsidy_pools = np.linspace(1000, 40000, 25)
+    subsidy_pools = np.linspace(1000, 40000, 20)
     weights_sets = [
         {'alpha': 0.4, 'beta': 0.2, 'gamma': 0.2, 'delta': 0.2},  # Environment focused
         {'alpha': 0.25, 'beta': 0.25, 'gamma': 0.25, 'delta': 0.25},  # Balanced
@@ -642,7 +642,7 @@ if __name__ == "__main__":
         'data_disability_weights': [0.2, 0.8],
         'data_tech_access_weights': [0.95, 0.05],
         'CHANCE_FOR_INSERTING_RANDOM_TRAFFIC': 0.2,
-        'ASC_VALUES': {'car': 0, 'bike': 0, 'public': 0, 'walk': 0, 'maas': 0, 'default': 0},
+        'ASC_VALUES': {'car': 0, 'bike': 0, 'public': 0, 'walk': 0, 'maas': 2000, 'default': 0},
         'UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS': {'beta_C': -0.05, 'beta_T': -0.06},
         'UTILITY_FUNCTION_BASE_COEFFICIENTS': {'beta_C': -0.05, 'beta_T': -0.06, 'beta_W': -0.01, 'beta_A': -0.01, 'alpha': -0.01},
         'PENALTY_COEFFICIENTS': {'disability_bike_walk': 0.8, 'age_health_bike_walk': 0.3, 'no_tech_access_car_bike': 0.1},

@@ -298,8 +298,7 @@ class Commuter(Agent):
         subsidy_amount = price * subsidy_percentage  # Subsidy is a percentage of the price
         # Request subsidy from the pool
         actual_subsidy = self.model.maas_agent.check_subsidy_availability(subsidy_amount)
-        print("checking the subsidy pool availability")
-        print(f"The actual subsidy is {actual_subsidy}")
+
         price_after_subsidy = price - actual_subsidy  # Apply the subsidy
             
 
@@ -654,7 +653,7 @@ class Commuter(Agent):
                 
             self.model.grid.move_agent(self, next_position)
             self.location = next_position
-            print(f"[DEBUG] Updated commuter {self.unique_id} location to {next_position}")
+            
             
         except Exception as e:
             print(f"[ERROR] Failed to update location: {e}")
@@ -687,7 +686,7 @@ class Commuter(Agent):
                 if request['status'] == 'Service Selected':
                     if self.location == request['destination']:
                         request['status'] = 'finished'
-                        print(f"[INFO] Commuter {self.unique_id} request {request_id} completed")
+                        #print(f"[INFO] Commuter {self.unique_id} request {request_id} completed")
                     else:
                         print(f"[DEBUG] Commuter {self.unique_id} en route to destination")
                         

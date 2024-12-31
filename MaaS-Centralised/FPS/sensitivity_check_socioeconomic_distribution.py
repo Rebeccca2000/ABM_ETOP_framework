@@ -9,7 +9,8 @@ from agent_service_provider_initialisation_03 import reset_database, CommuterInf
 import multiprocessing as mp
 import os
 from agent_subsidy_pool import SubsidyPoolConfig
-SIMULATION_STEPS = 144  # Run for a larger number of steps for better analysis
+from sdi_metrics import calculate_baseline_distribution, calculate_sdi_normalized, calculate_gini, calculate_income_ratios, analyze_temporal_patterns, calculate_efficiency_metrics
+SIMULATION_STEPS = 10  # Run for a larger number of steps for better analysis
 num_commuters = 120
 def calculate_sdi_normalized(subsidy_values, user_counts):
     """
@@ -22,23 +23,17 @@ def calculate_sdi_normalized(subsidy_values, user_counts):
     s_total = sum(subsidy_values.values())
     u_total = sum(user_counts.values())
     
-    if s_total == 0 or u_total == 0:
-        print("Warning: Zero total subsidies or users")
-        return 0.0
-    
-    ratios = []
+    # Weight by population share
+    weighted_ratios = []
     for income_level in subsidy_values.keys():
         s_i = subsidy_values[income_level]
         u_i = user_counts[income_level]
-        if u_i == 0:
-            continue
-        ratio = (s_i / s_total) / (u_i / u_total)
-        ratios.append(ratio)
-    
-    if not ratios:
-        return 0.0
-    
-    return sum(ratios) / len(ratios)
+        if u_i > 0 and s_total > 0:
+            population_share = u_i / u_total
+            subsidy_share = s_i / s_total
+            weighted_ratios.append((subsidy_share/population_share) * population_share)
+            
+    return 1 - (sum(weighted_ratios) - min(weighted_ratios)) / (max(weighted_ratios) - min(weighted_ratios))
 
 def calculate_sdi_theil(subsidy_values, user_counts):
     """
@@ -47,27 +42,21 @@ def calculate_sdi_theil(subsidy_values, user_counts):
     s_total = sum(subsidy_values.values())
     u_total = sum(user_counts.values())
     
-    if s_total == 0 or u_total == 0:
-        print("Warning: Zero total subsidies or users")
-        return 0.0
-    
     theil_sum = 0
     for income_level in subsidy_values.keys():
-        u_i = user_counts[income_level]
         s_i = subsidy_values[income_level]
+        u_i = user_counts[income_level]
         
-        if u_i == 0 or s_i == 0:
-            continue
-            
-        u_share = u_i / u_total
-        s_share = s_i / s_total
-        theil_sum += u_share * np.log(u_share / s_share)
+        if u_i > 0 and s_i > 0:
+            u_share = u_i / u_total
+            s_share = s_i / s_total
+            theil_sum += s_share * np.log(s_share / u_share)
     
     return theil_sum
 
 def run_single_simulation(params):
     """
-    Run a single simulation and calculate equity metrics
+    Run a single simulation with comprehensive equity analysis
     """
     print(f"Starting simulation with PID {os.getpid()}")
     db_path = f"service_provider_database_{os.getpid()}.db"
@@ -76,8 +65,29 @@ def run_single_simulation(params):
     Session = sessionmaker(bind=engine)
     session = Session()
     
+    # Define temporal constants
+    STEPS_PER_HOUR = 6
+    HOURS_PER_DAY = 24
+    TOTAL_DAILY_STEPS = STEPS_PER_HOUR * HOURS_PER_DAY
+    
+    # Initialize enhanced tracking structure
+    subsidy_tracking = {
+        income_level: {
+            'total': 0.0,
+            'hourly_subsidies': [0.0] * HOURS_PER_DAY,
+            'hourly_users': [0] * HOURS_PER_DAY,
+            'step_data': [],
+            'outcomes': {
+                'co2_reduction': 0.0,
+                'completed_trips': 0,
+                'total_travel_time': 0.0
+            }
+        }
+        for income_level in ['low', 'middle', 'high']
+    }
+    
     try:
-        # Extract parameters for reset_database
+        # Database initialization remains the same
         reset_db_params = {
             'uber_like1_capacity': params['uber_like1_capacity'],
             'uber_like1_price': params['uber_like1_price'],
@@ -88,50 +98,99 @@ def run_single_simulation(params):
             'bike_share2_capacity': params['bike_share2_capacity'],
             'bike_share2_price': params['bike_share2_price']
         }
-        
-        # Initialize database
         reset_database(engine=engine, session=session, **reset_db_params)
         
-        # Extract parameters for MobilityModel
         model_params = params.copy()
-        simulation_steps = model_params.pop('simulation_steps')  # Remove and store simulation_steps
-        
-        # Initialize and run model
+        simulation_steps = model_params.pop('simulation_steps')
         model = MobilityModel(db_connection_string=db_connection_string, **model_params)
-        model.run_model(simulation_steps)  # Use simulation_steps here
+        model.run_model(simulation_steps)
         
-        # Query subsidies by income level
-        subsidy_by_income = {}
-        user_counts = {}
-        
-        for income_level in ['low', 'middle', 'high']:
-            subsidies = (
-                session.query(func.sum(ServiceBookingLog.government_subsidy))
-                .join(CommuterInfoLog, CommuterInfoLog.commuter_id == ServiceBookingLog.commuter_id)
-                .filter(CommuterInfoLog.income_level == income_level)
-                .scalar() or 0
-            )
+        # Enhanced data collection with outcomes
+        for step in range(simulation_steps):
+            current_hour = (step % TOTAL_DAILY_STEPS) // STEPS_PER_HOUR
             
-            users = (
-                session.query(func.count(func.distinct(CommuterInfoLog.commuter_id)))
-                .filter(CommuterInfoLog.income_level == income_level)
-                .scalar() or 0
+            for income_level in ['low', 'middle', 'high']:
+                # Query basic metrics
+                step_data = (
+                    session.query(
+                        func.sum(ServiceBookingLog.government_subsidy).label('subsidy'),
+                        func.count(func.distinct(ServiceBookingLog.commuter_id)).label('users'),
+                        func.sum(ServiceBookingLog.total_time).label('travel_time')
+                    )
+                    .join(CommuterInfoLog, CommuterInfoLog.commuter_id == ServiceBookingLog.commuter_id)
+                    .filter(
+                        CommuterInfoLog.income_level == income_level,
+                        ServiceBookingLog.start_time == step
+                    )
+                    .first()
+                )
+                
+                step_subsidy = float(step_data.subsidy or 0.0)
+                active_users = int(step_data.users or 0)
+                travel_time = float(step_data.travel_time or 0.0)
+                
+                # Update tracking data with enhanced metrics
+                subsidy_tracking[income_level]['step_data'].append({
+                    'step': step,
+                    'hour': current_hour,
+                    'subsidy': step_subsidy,
+                    'active_users': active_users,
+                    'travel_time': travel_time
+                })
+                
+                # Update aggregates
+                subsidy_tracking[income_level]['hourly_subsidies'][current_hour] += step_subsidy
+                subsidy_tracking[income_level]['hourly_users'][current_hour] += active_users
+                subsidy_tracking[income_level]['total'] += step_subsidy
+                subsidy_tracking[income_level]['outcomes']['total_travel_time'] += travel_time
+                subsidy_tracking[income_level]['outcomes']['completed_trips'] += active_users
+                
+        # Calculate final distributions
+        baseline = calculate_baseline_distribution()
+        subsidy_by_income = {
+            level: tracking['total'] 
+            for level, tracking in subsidy_tracking.items()
+        }
+        user_counts = {
+            level: len(set(
+                record['active_users'] 
+                for record in tracking['step_data'] 
+                if record['active_users'] > 0
+            ))
+            for level, tracking in subsidy_tracking.items()
+        }
+        
+        # Calculate comprehensive metrics
+        equity_metrics = {
+            'distributional': {
+                'sdi_normalized': calculate_sdi_normalized(subsidy_by_income, user_counts),  # Remove baseline parameter
+                'gini_coefficient': calculate_gini(list(subsidy_by_income.values())),
+                'deviation_from_baseline': {
+                    level: (subsidy_by_income[level]/sum(subsidy_by_income.values())) - baseline[level]
+                    for level in baseline
+                }
+            },
+            'temporal': analyze_temporal_patterns(subsidy_tracking),
+            'ratios': {},
+            'efficiency': calculate_efficiency_metrics(
+                subsidy_by_income,
+                {level: tracking['outcomes'] for level, tracking in subsidy_tracking.items()}
             )
-            
-            subsidy_by_income[income_level] = float(subsidies)
-            user_counts[income_level] = users
+        }
         
-        # Calculate metrics
-        sdi_norm = calculate_sdi_normalized(subsidy_by_income, user_counts)
-        sdi_theil = calculate_sdi_theil(subsidy_by_income, user_counts)
-        
-        print(f"Simulation {os.getpid()} completed successfully")
+        # Add income ratios
+        ratios, per_user = calculate_income_ratios(subsidy_by_income, user_counts)
+        equity_metrics['ratios'] = ratios
+        equity_metrics['per_user_subsidies'] = per_user
         
         return {
-            'sdi_normalized': sdi_norm,
-            'sdi_theil': sdi_theil,
-            'subsidy_distribution': subsidy_by_income,
-            'user_distribution': user_counts
+            'equity_metrics': equity_metrics,
+            'raw_data': {
+                'subsidy_distribution': subsidy_by_income,
+                'user_distribution': user_counts,
+                'temporal_data': subsidy_tracking,
+                'baseline': baseline
+            }
         }
         
     except Exception as e:
@@ -150,66 +209,93 @@ def run_parallel_simulations(parameter_sets, num_cpus):
     with mp.Pool(processes=num_cpus) as pool:
         results = pool.map(run_single_simulation, parameter_sets)
     return results
-def create_enhanced_plots(results, output_dir='socioeconomic_distribution_plots'):
+def plot_comprehensive_equity_analysis(results, output_dir='socioeconomic_distribution_plots'):
     """
-    Create comprehensive visualizations for SDI analysis using only matplotlib
+    Create comprehensive visualizations for equity analysis combining both SDI and general equity metrics
     """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Create DataFrame from results
+    # Create DataFrame with all metrics
     df = pd.DataFrame([{
-        'SDI_Normalized': r['sdi_normalized'],
-        'SDI_Theil': r['sdi_theil'],
-        'subsidy_distribution': r['subsidy_distribution'],  # lowercase
-        'user_distribution': r['user_distribution']  # lowercase
+        'SDI_Normalized': r['equity_metrics']['distributional']['sdi_normalized'],
+        'Gini_Coefficient': r['equity_metrics']['distributional']['gini_coefficient'],
+        'Subsidy_Pool': r['raw_data']['baseline'].get('total', 0),
+        'Low_Income_Share': r['equity_metrics']['distributional']['deviation_from_baseline']['low'],
+        'Middle_Income_Share': r['equity_metrics']['distributional']['deviation_from_baseline']['middle'],
+        'High_Income_Share': r['equity_metrics']['distributional']['deviation_from_baseline']['high'],
+        'subsidy_distribution': r['raw_data']['subsidy_distribution'],
+        'user_distribution': r['raw_data']['user_distribution']
     } for r in results])
     
-    # 1. Box Plot (instead of violin plot)
+    # Handle potential zero/invalid values
+    df = df.replace([np.inf, -np.inf], np.nan)
+    df = df.fillna(0)
+    
+    # 1. Box Plot of Metrics
     plt.figure(figsize=(12, 6))
-    plt.boxplot([df['SDI_Normalized'], df['SDI_Theil']], 
-                labels=['SDI_Normalized', 'SDI_Theil'])
-    plt.title('Distribution Comparison of SDI Metrics')
+    plt.boxplot([df['SDI_Normalized'], df['Gini_Coefficient']], 
+                labels=['SDI_Normalized', 'Gini_Coefficient'])
+    plt.title('Distribution Comparison of Equity Metrics')
     plt.ylabel('Value')
     plt.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(output_dir, 'sdi_box_plot.png'))
+    plt.savefig(os.path.join(output_dir, 'equity_metrics_box_plot.png'))
     plt.close()
     
-    # 2. Scatter Plot with Trends
-    subsidy_pools = np.linspace(1000, 40000, len(df))
-    
+    # 2. Scatter Plot with Trends vs Subsidy Pool
     plt.figure(figsize=(12, 6))
     
     # Plot SDI Normalized
-    plt.scatter(subsidy_pools, df['SDI_Normalized'], 
+    plt.scatter(df['Subsidy_Pool'], df['SDI_Normalized'], 
                label='SDI Normalized', alpha=0.6, color='blue')
-    z = np.polyfit(subsidy_pools, df['SDI_Normalized'], 1)
+    z = np.polyfit(df['Subsidy_Pool'], df['SDI_Normalized'], 1)
     p = np.poly1d(z)
-    plt.plot(subsidy_pools, p(subsidy_pools), 
-            linestyle='--', color='blue', label='Normalized Trend')
+    x_smooth = np.linspace(df['Subsidy_Pool'].min(), df['Subsidy_Pool'].max(), 100)
+    plt.plot(x_smooth, p(x_smooth), 
+            linestyle='--', color='blue', label='SDI Trend')
     
-    # Plot SDI Theil
-    plt.scatter(subsidy_pools, df['SDI_Theil'], 
-               label='SDI Theil', alpha=0.6, color='red')
-    z = np.polyfit(subsidy_pools, df['SDI_Theil'], 1)
+    # Plot Gini Coefficient
+    plt.scatter(df['Subsidy_Pool'], df['Gini_Coefficient'], 
+               label='Gini Coefficient', alpha=0.6, color='red')
+    z = np.polyfit(df['Subsidy_Pool'], df['Gini_Coefficient'], 1)
     p = np.poly1d(z)
-    plt.plot(subsidy_pools, p(subsidy_pools), 
-            linestyle='--', color='red', label='Theil Trend')
+    plt.plot(x_smooth, p(x_smooth), 
+            linestyle='--', color='red', label='Gini Trend')
     
     plt.xlabel('Subsidy Pool Size')
-    plt.ylabel('SDI Value')
-    plt.title('SDI Metrics vs Subsidy Pool Size')
+    plt.ylabel('Metric Value')
+    plt.title('Equity Metrics vs Subsidy Pool Size')
     plt.legend()
     plt.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(output_dir, 'sdi_trends.png'))
+    plt.savefig(os.path.join(output_dir, 'metrics_vs_subsidy.png'))
     plt.close()
     
-    # 3. Alternative to Heatmap: 2D Line Plot
+    # 3. Income Share Deviations
+    plt.figure(figsize=(12, 6))
+    
+    income_levels = ['Low_Income_Share', 'Middle_Income_Share', 'High_Income_Share']
+    colors = ['blue', 'green', 'red']
+    
+    for level, color in zip(income_levels, colors):
+        plt.plot(df['Subsidy_Pool'], df[level], 'o-', 
+                label=level.replace('_', ' '), 
+                color=color, 
+                alpha=0.6)
+    
+    plt.xlabel('Subsidy Pool Size')
+    plt.ylabel('Deviation from Baseline')
+    plt.title('Income Share Deviations by Subsidy Pool Size')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(os.path.join(output_dir, 'income_share_deviations.png'))
+    plt.close()
+    
+    # 4. Subsidy vs User Distribution
     plt.figure(figsize=(12, 6))
     for income_level in ['low', 'middle', 'high']:
-        subsidies = [r['subsidy_distribution'][income_level] for r in results]  # lowercase
-        users = [r['user_distribution'][income_level] for r in results]  # lowercase
-        plt.plot(subsidies, users, 'o-', label=income_level)
+        subsidies = [r['raw_data']['subsidy_distribution'][income_level] for r in results]
+        users = [r['raw_data']['user_distribution'][income_level] for r in results]
+        plt.plot(subsidies, users, 'o-', label=f'{income_level.title()} Income')
     
     plt.xlabel('Subsidy Amount')
     plt.ylabel('User Count')
@@ -219,7 +305,7 @@ def create_enhanced_plots(results, output_dir='socioeconomic_distribution_plots'
     plt.savefig(os.path.join(output_dir, 'subsidy_distribution.png'))
     plt.close()
     
-    # 4. CDF Plots
+    # 5. CDF Plots
     plt.figure(figsize=(12, 6))
     
     # Plot CDF for SDI Normalized
@@ -228,82 +314,30 @@ def create_enhanced_plots(results, output_dir='socioeconomic_distribution_plots'
     plt.plot(sorted_norm, cumulative_prob, 
             label='SDI Normalized', linewidth=2, color='blue')
     
-    # Plot CDF for SDI Theil
-    sorted_theil = np.sort(df['SDI_Theil'])
-    cumulative_prob = np.arange(1, len(sorted_theil) + 1) / len(sorted_theil)
-    plt.plot(sorted_theil, cumulative_prob, 
-            label='SDI Theil', linewidth=2, color='red')
+    # Plot CDF for Gini Coefficient
+    sorted_gini = np.sort(df['Gini_Coefficient'])
+    cumulative_prob = np.arange(1, len(sorted_gini) + 1) / len(sorted_gini)
+    plt.plot(sorted_gini, cumulative_prob, 
+            label='Gini Coefficient', linewidth=2, color='red')
     
-    plt.xlabel('SDI Value')
+    plt.xlabel('Metric Value')
     plt.ylabel('Cumulative Probability')
-    plt.title('Cumulative Distribution of SDI Metrics')
+    plt.title('Cumulative Distribution of Equity Metrics')
     plt.legend()
     plt.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(output_dir, 'sdi_cdf.png'))
+    plt.savefig(os.path.join(output_dir, 'equity_metrics_cdf.png'))
     plt.close()
 
     # Print summary statistics
     print("\nSummary Statistics:")
     print("\nSDI Normalized:")
     print(df['SDI_Normalized'].describe())
-    print("\nSDI Theil:")
-    print(df['SDI_Theil'].describe())
-
-def plot_equity_results(results, output_dir='socioeconomic_distribution_plots'):
-    """
-    Create visualizations for the equity analysis with explicit file paths and debug prints
-    """
-    print("Starting to generate plots...")
-    
-    # Create output directory if it doesn't exist
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        print(f"Created output directory: {output_dir}")
-    
-    # Extract results with validation
-    sdi_norm_values = [r['sdi_normalized'] for r in results]
-    sdi_theil_values = [r['sdi_theil'] for r in results]
-    
-    print(f"Extracted values for plotting:")
-    print(f"SDI Normalized values: {sdi_norm_values}")
-    print(f"SDI Theil values: {sdi_theil_values}")
-    
-    # Plot SDI normalized distribution
-    plt.figure(figsize=(10, 6))
-    plt.hist(sdi_norm_values, bins=min(20, len(sdi_norm_values)), alpha=0.7, color='blue')
-    plt.title('Distribution of Normalized SDI Values')
-    plt.xlabel('SDI Normalized')
-    plt.ylabel('Frequency')
-    
-    # Save with full path
-    normalized_plot_path = os.path.join(os.getcwd(), output_dir, 'sdi_normalized_dist.png')
-    plt.savefig(normalized_plot_path)
-    plt.close()
-    print(f"Saved normalized SDI plot to: {normalized_plot_path}")
-    
-    # Plot SDI Theil distribution
-    plt.figure(figsize=(10, 6))
-    plt.hist(sdi_theil_values, bins=min(20, len(sdi_theil_values)), alpha=0.7, color='green')
-    plt.title('Distribution of Theil SDI Values')
-    plt.xlabel('SDI Theil')
-    plt.ylabel('Frequency')
-    
-    # Save with full path
-    theil_plot_path = os.path.join(os.getcwd(), output_dir, 'sdi_theil_dist.png')
-    plt.savefig(theil_plot_path)
-    plt.close()
-    print(f"Saved Theil SDI plot to: {theil_plot_path}")
-    
-    # Create summary statistics
-    summary = pd.DataFrame({
-        'SDI_Normalized': sdi_norm_values,
-        'SDI_Theil': sdi_theil_values
-    })
-    
-    # Save summary with full path
-    summary_path = os.path.join(os.getcwd(), output_dir, 'socioeconomic_distribution_summary.csv')
-    summary.describe().to_csv(summary_path)
-    print(f"Saved summary statistics to: {summary_path}")
+    print("\nGini Coefficient:")
+    print(df['Gini_Coefficient'].describe())
+    print("\nIncome Share Deviations:")
+    for level in income_levels:
+        print(f"\n{level}:")
+        print(df[level].describe())
 # Example parameter sets with varying subsidy configurations
 def generate_parameter_sets(base_parameters, num_sets):
     parameter_sets = []
@@ -364,7 +398,7 @@ if __name__ == "__main__":
     }
     
     # Generate parameter sets
-    parameter_sets = generate_parameter_sets(base_parameters, num_sets=13)
+    parameter_sets = generate_parameter_sets(base_parameters, num_sets=5)
     print(f"Generated {len(parameter_sets)} parameter sets")
     
     # Run simulations
@@ -377,5 +411,4 @@ if __name__ == "__main__":
         pickle.dump(results, f)
     
     # Generate plots and summary statistics
-    plot_equity_results(results)
-    create_enhanced_plots(results)
+plot_comprehensive_equity_analysis(results)
