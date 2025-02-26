@@ -658,7 +658,7 @@ class MaaS(Agent):
                     each_stop_speed = train_stop_speed
                     price_per_stop = train_stop_price
                 travel_time = number_of_stops * each_stop_speed
-                waiting_time = 1 # Default waiting time is 1 step
+                waiting_time = 0.5 # Default waiting time is 1 step
                 segment_time = travel_time + waiting_time
 
                 total_time += segment_time

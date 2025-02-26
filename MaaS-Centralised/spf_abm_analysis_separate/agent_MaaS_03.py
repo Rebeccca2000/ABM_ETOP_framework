@@ -316,7 +316,7 @@ class MaaS(Agent):
             for mode in self.routes:
                 for route_id in self.get_routes_through_station(mode, current_station):
                     for next_station in self.routes[mode][route_id]:
-                        travel_time = 1  # 1 tick per stop
+                        travel_time = 0.8  # 1 tick per stop
                         arrival_time = current_time + travel_time
 
                         if arrival_time < best_times[next_station]:
@@ -419,7 +419,7 @@ class MaaS(Agent):
                     each_stop_speed = train_stop_speed
                     price_per_stop = train_stop_price
                 travel_time = number_of_stops * each_stop_speed
-                waiting_time = 1 # Default waiting time is 1 step
+                waiting_time = 0.3# Default waiting time is 0.5 step
                 segment_time = travel_time + waiting_time
 
                 total_time += segment_time
@@ -555,7 +555,7 @@ class MaaS(Agent):
     
     
     ########################################################################################################
-    ##################################### For MaaS Options ########################################
+    ##################################### For MaaS Mode Options ########################################
     ########################################################################################################
     def calculate_time_and_price_to_station_or_destination(self, segment, start_time):
         
@@ -665,7 +665,7 @@ class MaaS(Agent):
                     each_stop_speed = train_stop_speed
                     price_per_stop = train_stop_price
                 travel_time = number_of_stops * each_stop_speed
-                waiting_time = 1 # Default waiting time is 1 step
+                waiting_time = 0.3# Default waiting time is 1 step
                 segment_time = travel_time + waiting_time
 
                 total_time += segment_time
@@ -1214,6 +1214,8 @@ class MaaS(Agent):
 
         # Calculate total subsidies already used in current period
         with self.Session() as session:
+            # Add this line to ensure fresh data
+            session.expire_all()
             if self.subsidy_config.pool_type == 'weekly':
                 total_used = session.query(func.sum(SubsidyUsageLog.subsidy_amount))\
                     .filter(SubsidyUsageLog.week == current_week)\
@@ -1228,14 +1230,14 @@ class MaaS(Agent):
                     .scalar() or 0
 
         remaining_pool = self.subsidy_config.total_amount - total_used
-        print(f"Total subsidies used: {total_used}, Remaining in pool: {remaining_pool}")
+        #print(f"Total subsidies used: {total_used}, Remaining in pool: {remaining_pool}")
 
         # If there's enough remaining in the pool
         if remaining_pool >= requested_amount:
-            print(f"Providing subsidy: {requested_amount}")
+            #print(f"Providing subsidy: {requested_amount}")
             return requested_amount
         elif remaining_pool > 0:
-            print(f"Providing partial subsidy: {remaining_pool}")
+            #print(f"Providing partial subsidy: {remaining_pool}")
             return remaining_pool
         else:
             print("Subsidy pool depleted")
@@ -1280,4 +1282,5 @@ class MaaS(Agent):
                 period_type=self.subsidy_config.pool_type
             )
             session.add(usage_log)
+            session.flush()  # Ensure changes are pushed to the database
             session.commit()

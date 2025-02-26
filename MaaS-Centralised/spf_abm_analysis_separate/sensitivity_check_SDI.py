@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, func, case
+from sqlalchemy import create_engine, func, case, or_, and_
 from sqlalchemy.orm import sessionmaker
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,178 +6,311 @@ import seaborn as sns
 import pickle
 import pandas as pd
 from run_visualisation_03 import MobilityModel
-from agent_service_provider_initialisation_03 import reset_database, CommuterInfoLog, ServiceBookingLog
+from agent_service_provider_initialisation_03 import reset_database, CommuterInfoLog, ServiceBookingLog,SubsidyUsageLog
 import multiprocessing as mp
 import os
 from agent_subsidy_pool import SubsidyPoolConfig
 import gc
 from scipy.stats import qmc
-import math
-
+import traceback
+import statistics
 from sensitivity_check_parameter_config import (
     ParameterTracker, PARAMETER_RANGES, 
-    FPS_SUBSIDY_DEFAULTS, PBS_SUBSIDY_RANGES
+    FPS_SUBSIDY_DEFAULTS, PBS_SUBSIDY_RANGES,PBS_SUBSIDY_DEFAULTS
 )
 
-SIMULATION_STEPS = 20
-
+SIMULATION_STEPS = 144
 def calculate_sur(session, income_level):
-    """Calculate Subsidy Utilization Rate for a given income level with mode differentiation"""
+    """
+    Calculate Subsidy Utilization Rate using a policy adherence approach.
+    """
     try:
-        # Separate queries for different modes
-        mode_subsidies = {}
-        mode_trips = {}
-        
-        for mode in ['bike', 'car', 'MaaS_Bundle']:
-            # Get actual subsidies for each mode
-            actual_subsidies = session.query(
-                func.sum(ServiceBookingLog.government_subsidy)
-            ).select_from(ServiceBookingLog).join(
-                CommuterInfoLog,
-                ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
-            ).filter(
-                CommuterInfoLog.income_level == income_level,
-                ServiceBookingLog.record_company_name.like(f'%{mode}%')
-            ).scalar() or 0
-            
-            # Get total trips for each mode
-            total_mode_trips = session.query(
-                func.count(ServiceBookingLog.request_id)
-            ).select_from(ServiceBookingLog).join(
-                CommuterInfoLog,
-                ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
-            ).filter(
-                CommuterInfoLog.income_level == income_level,
-                ServiceBookingLog.record_company_name.like(f'%{mode}%')
-            ).scalar() or 0
-            
-            mode_subsidies[mode] = actual_subsidies
-            mode_trips[mode] = total_mode_trips
-
-        # Different max rates for different modes
-        max_rates = {
-            'bike': 0.3,
-            'car': 0.2,
-            'MaaS_Bundle': 0.4
+        # Policy definitions
+        income_distribution = {
+            'low': 0.50,    
+            'middle': 0.30, 
+            'high': 0.20    
         }
 
-        # Calculate SUR for each mode separately
-        mode_surs = {}
-        for mode in max_rates:
-            max_subsidies = mode_trips[mode] * max_rates[mode] * 100
-            mode_surs[mode] = mode_subsidies[mode] / max_subsidies if max_subsidies > 0 else 0
-
-        # Return weighted average of SURs
-        weights = {'bike': 0.3, 'car': 0.3, 'MaaS_Bundle': 0.4}
-        total_sur = sum(mode_surs[mode] * weights[mode] for mode in weights)
+        mode_distribution = {
+            'low': {
+                'MaaS_Bundle': 0.25,  # Increased from 0.15 - promote integrated mobility
+                'public': 0.25,       # Reduced from 0.45 - less forced dependency
+                'bike': 0.20,         # Maintained as sustainable option
+                'car': 0.15,         # Increased from 0.10 - better car access
+                'walk': 0.15         # Reduced from 0.20 - less forced walking
+            },
+            'middle': {
+                'MaaS_Bundle': 0.25,  
+                'public': 0.25,
+                'bike': 0.20,
+                'car': 0.15,
+                'walk': 0.15    
+            },
+            'high': {
+                'MaaS_Bundle': 0.25,  # Increased to match others
+                'public': 0.25,       # Increased to match others
+                'bike': 0.20,         # Increased for sustainability
+                'car': 0.15,         # Reduced from 0.40 - discourage overdependence
+                'walk': 0.15         # Maintained
+            }
+        }
         
-        return total_sur
+        # Map conceptual modes to actual database record names
+        mode_mapping = {
+            'public': ['public'],
+            'car': ['UberLike1', 'UberLike2'],
+            'bike': ['BikeShare1', 'BikeShare2'],
+            'MaaS_Bundle': ['MaaS_Bundle']
+        }
+        
+        # Get the total subsidy amount from ServiceBookingLog
+        total_subsidies = session.query(
+            func.sum(ServiceBookingLog.government_subsidy)
+        ).scalar() or 0
+        
+        mode_adherence_scores = []
+        
+        for mode, target_pct in mode_distribution[income_level].items():
+            # Calculate target subsidy for this income-mode combination
+            target_subsidy = total_subsidies * income_distribution[income_level] * target_pct
+
+            # Get actual subsidy utilization using the mode mapping
+            actual_subsidy = session.query(
+                func.sum(ServiceBookingLog.government_subsidy)
+            ).join(
+                CommuterInfoLog,
+                ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
+            ).filter(
+                CommuterInfoLog.income_level == income_level,
+                ServiceBookingLog.record_company_name.in_(mode_mapping[mode])
+            ).scalar() or 0
+
+            if target_subsidy > 0:
+                # Calculate utilization ratio
+                utilization_ratio = actual_subsidy / target_subsidy
+                
+                # Calculate adherence score using a Gaussian-like function
+                adherence_score = np.exp(-((utilization_ratio - 1) ** 2) / 0.5)
+                mode_adherence_scores.append(adherence_score)
+
+                # Debug information
+                print(f"\n{income_level} income, {mode} mode:")
+                print(f"Target subsidy: {target_subsidy:.2f}")
+                print(f"Actual subsidy: {actual_subsidy:.2f}")
+                print(f"Utilization ratio: {utilization_ratio:.2f}")
+                print(f"Adherence score: {adherence_score:.2f}")
+
+        # Calculate final SUR as average of mode adherence scores
+        if mode_adherence_scores:
+            final_sur = sum(mode_adherence_scores) / len(mode_adherence_scores)
+            return final_sur
+            
+        return 0
 
     except Exception as e:
         print(f"Error calculating SUR for {income_level}: {e}")
+        traceback.print_exc()
         return 0
 
 def calculate_mae(session, income_level):
-    """Calculate Modal Access Equity with explicit mode handling"""
+    """
+    Calculate Modal Access Equity by comparing actual mode shares to target preferences.
+    """
     try:
-        # Define mode categories explicitly
-        mode_categories = {
-            'bike': ['BikeShare1', 'BikeShare2'],
+        # Define target mode preferences
+        mode_preferences = {
+            'low': {
+                'MaaS_Bundle': 0.30,  # Higher target - we want integrated mobility
+                'public': 0.3,       # Reduced dependency on public transit
+                'bike': 0.1,         # Increased sustainable transport
+                'car': 0.25,         # Moderate car access when needed
+                'walk': 0.05         # Reduced forced walking
+            },
+            'middle': {
+                'MaaS_Bundle': 0.16,  # High MaaS adoption
+                'public': 0.36,       # Balanced public transit use
+                'bike': 0.13,         # Strong sustainable option
+                'car': 0.25,         # Moderate car use
+                'walk': 0.1         # Choice-based walking
+            },
+            'high': {
+                'MaaS_Bundle': 0.30,  # Good MaaS integration
+                'public': 0.15,       # Increased public transit
+                'bike': 0.2,         # Match sustainable goals
+                'car': 0.30,         # Reduced car dependency
+                'walk': 0.05         # Choice-based walking
+            }
+        }
+        
+        # Map conceptual modes to actual database record names
+        mode_mapping = {
+            'public': ['public'],
             'car': ['UberLike1', 'UberLike2'],
+            'bike': ['BikeShare1', 'BikeShare2'],
             'MaaS_Bundle': ['MaaS_Bundle'],
-            'public': ['public', 'bus', 'train']
+            'walk': ['walk']  # Added walking mode mapping
         }
 
-        # Get modal shares for the income group with mode categorization
-        income_modal_shares = {}
-        overall_modal_shares = {}
-        
-        total_trips = 0
-        income_total = 0
-        
-        for mode_type, providers in mode_categories.items():
-            # Calculate shares for specific income level
-            income_count = session.query(
+        # Calculate actual mode shares
+        total_trips = session.query(
+            func.count(ServiceBookingLog.request_id)
+        ).join(
+            CommuterInfoLog,
+            ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
+        ).filter(
+            CommuterInfoLog.income_level == income_level
+        ).scalar() or 0
+
+        if total_trips == 0:
+            return 0
+
+        mode_adherence_scores = []
+        mode_share_details = []  # Add this line to collect detailed information
+        for mode, target_share in mode_preferences[income_level].items():
+            # Get actual trips for this mode using mode_mapping
+            mode_trips = session.query(
                 func.count(ServiceBookingLog.request_id)
-            ).select_from(ServiceBookingLog).join(
+            ).join(
                 CommuterInfoLog,
                 ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
             ).filter(
                 CommuterInfoLog.income_level == income_level,
-                ServiceBookingLog.record_company_name.in_(providers)
+                ServiceBookingLog.record_company_name.in_(mode_mapping[mode])
             ).scalar() or 0
-            
-            # Calculate overall shares
-            overall_count = session.query(
-                func.count(ServiceBookingLog.request_id)
-            ).filter(
-                ServiceBookingLog.record_company_name.in_(providers)
-            ).scalar() or 0
-            
-            income_modal_shares[mode_type] = income_count
-            overall_modal_shares[mode_type] = overall_count
-            total_trips += overall_count
-            income_total += income_count
 
-        # Calculate normalized shares and deviations
-        deviations = []
-        if total_trips > 0:
-            for mode_type in mode_categories:
-                income_share = income_modal_shares[mode_type] / income_total if income_total > 0 else 0
-                overall_share = overall_modal_shares[mode_type] / total_trips
-                
-                if overall_share > 0:
-                    deviation = abs(income_share - overall_share) / overall_share
-                    deviations.append(deviation)
+            # Calculate actual mode share
+            actual_share = mode_trips / total_trips if total_trips > 0 else 0
 
-        # Return equity score
-        return 1 - (sum(deviations) / len(deviations)) if deviations else 0
+            # Calculate adherence score
+            share_ratio = actual_share / target_share if target_share > 0 else 0
+            adherence_score = np.exp(-((share_ratio - 1) ** 2) / 0.5)
+            mode_adherence_scores.append(adherence_score)
+            # Store detailed mode share information
+            mode_share_details.append({
+                'mode': mode,
+                'target_share': target_share,
+                'actual_share': actual_share,
+                'share_ratio': share_ratio,
+                'adherence_score': adherence_score
+            })
+            # Debug information
+            print(f"\n{income_level} income, {mode} mode:")
+            print(f"Target share: {target_share:.3f}")
+            print(f"Actual share: {actual_share:.3f}")
+            print(f"Share ratio: {share_ratio:.3f}")
+            print(f"Adherence score: {adherence_score:.3f}")
+
+        # Calculate final MAE
+        if mode_adherence_scores:
+            mae = sum(mode_adherence_scores) / len(mode_adherence_scores)
+            return mae, mode_share_details
+
+        return 0, []
+
+
 
     except Exception as e:
         print(f"Error calculating MAE for {income_level}: {e}")
+        traceback.print_exc()
         return 0
 
 def calculate_upi(session, income_level):
-    """Calculate Usage Pattern Index for a given income level"""
+    """
+    Enhanced Usage Pattern Index calculation with refined temporal weights.
+    """
     try:
-        # Calculate Modal Usage Diversity 
-        unique_modes = session.query(
-            func.count(func.distinct(ServiceBookingLog.record_company_name))
-        ).select_from(ServiceBookingLog).join(
-            CommuterInfoLog,
-            ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
-        ).filter(
-            CommuterInfoLog.income_level == income_level
-        ).scalar() or 0
+        # Refined time periods with adjusted weights
+        time_periods = {
+            'early_morning': {'range': (0, 24), 'weight': 0.5},
+            'morning_rush': {'range': (24, 42), 'weight': 1.3},
+            'peak_morning': {'range': (42, 60), 'weight': 1.4},
+            'midday': {'range': (60, 78), 'weight': 1.0},
+            'afternoon': {'range': (78, 96), 'weight': 1.0},
+            'peak_evening': {'range': (96, 114), 'weight': 1.4},
+            'evening': {'range': (114, 132), 'weight': 1.2},
+            'late_night': {'range': (132, 144), 'weight': 0.5}
+        }
 
-        total_modes = session.query(
-            func.count(func.distinct(ServiceBookingLog.record_company_name))
-        ).scalar() or 1
+        # Refined quality weights with income-specific adjustments
+        quality_weights = {
+            'low': {
+                'MaaS_Bundle': {'quality': 1.0, 'sustainability': 0.9},
+                'public': {'quality': 0.9, 'sustainability': 1.0},
+                'bike': {'quality': 0.8, 'sustainability': 1.0},
+                'car': {'quality': 0.6, 'sustainability': 0.5},
+                'walk': {'quality': 0.9, 'sustainability': 1.0}
+            },
+            'middle': {
+                'MaaS_Bundle': {'quality': 0.9, 'sustainability': 0.9},
+                'public': {'quality': 0.8, 'sustainability': 0.9},
+                'bike': {'quality': 0.9, 'sustainability': 1.0},
+                'car': {'quality': 0.7, 'sustainability': 0.6},
+                'walk': {'quality': 0.8, 'sustainability': 1.0}
+            },
+            'high': {
+                'MaaS_Bundle': {'quality': 0.8, 'sustainability': 0.8},
+                'public': {'quality': 0.7, 'sustainability': 0.8},
+                'bike': {'quality': 0.9, 'sustainability': 1.0},
+                'car': {'quality': 0.9, 'sustainability': 0.7},
+                'walk': {'quality': 0.7, 'sustainability': 1.0}
+            }
+        }
 
-        modal_diversity = unique_modes / total_modes if total_modes > 0 else 0
+        total_entropy = 0
+        total_weight = 0
 
-        # Calculate Time Period Coverage
-        active_periods = session.query(
-            func.count(func.distinct(ServiceBookingLog.start_time))
-        ).select_from(ServiceBookingLog).join(
-            CommuterInfoLog,
-            ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
-        ).filter(
-            CommuterInfoLog.income_level == income_level
-        ).scalar() or 0
+        for period, period_info in time_periods.items():
+            start, end = period_info['range']
+            period_weight = period_info['weight']
+            
+            mode_counts = {}
+            for mode in quality_weights[income_level].keys():
+                count = session.query(
+                    func.count(ServiceBookingLog.request_id)
+                ).select_from(
+                    ServiceBookingLog
+                ).join(
+                    CommuterInfoLog,
+                    ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
+                ).filter(
+                    CommuterInfoLog.income_level == income_level,
+                    ServiceBookingLog.record_company_name.like(f'%{mode}%'),
+                    ServiceBookingLog.start_time % 144 >= start,
+                    ServiceBookingLog.start_time % 144 < end
+                ).scalar() or 0
 
-        total_periods = SIMULATION_STEPS
-        time_coverage = active_periods / total_periods if total_periods > 0 else 0
+                weights = quality_weights[income_level][mode]
+                mode_counts[mode] = count * (weights['quality'] * 0.6 + weights['sustainability'] * 0.4)
 
-        return modal_diversity * time_coverage
+            total = sum(mode_counts.values())
+            if total > 0:
+                shares = [count/total for count in mode_counts.values()]
+                entropy = -sum(p * np.log(p) if p > 0 else 0 for p in shares)
+                max_entropy = np.log(len(mode_counts))
+                normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0
+                total_entropy += normalized_entropy * period_weight
+                total_weight += period_weight
+
+        upi = total_entropy / total_weight if total_weight > 0 else 0
+        
+        # Apply income-specific scaling
+        income_factors = {'low': 1.0, 'middle': 0.85, 'high': 0.7}
+        adjusted_upi = upi * income_factors[income_level]
+        
+        return min(max(adjusted_upi, 0), 1)
 
     except Exception as e:
-        print(f"Error calculating UPI for {income_level}: {e}")
+        print(f"Error calculating UPI: {e}")
         return 0
 
-def calculate_sdi(sur, mae, upi, weights=(0.4, 0.3, 0.3)):
+def calculate_sdi(sur, mae, upi, weights=(0.3, 0.7, 0)):
     """Calculate combined SDI score"""
-    return weights[0] * sur + weights[1] * mae + weights[2] * upi
+    # Extract just the scores from the tuples
+    sur_score = sur[0] if isinstance(sur, tuple) else sur
+    mae_score = mae[0] if isinstance(mae, tuple) else mae
+    upi_score = upi[0] if isinstance(upi, tuple) else upi
+    return weights[0] * sur_score + weights[1] * mae_score + weights[2] * upi_score
 
 def calculate_sdi_metrics(session):
     """
@@ -193,16 +326,17 @@ def calculate_sdi_metrics(session):
     for income_level in ['low', 'middle', 'high']:
         # Calculate individual metrics
         sur = calculate_sur(session, income_level)
-        mae = calculate_mae(session, income_level)
+        mae_score, mode_details = calculate_mae(session, income_level)
         upi = calculate_upi(session, income_level)
         
         # Calculate combined SDI score
-        sdi = calculate_sdi(sur, mae, upi)
+        sdi = calculate_sdi(sur, mae_score, upi)
         
         # Store results for this income level
         results[income_level] = {
             'sur': sur,
-            'mae': mae,
+            'mae': mae_score,
+            'mode_details': mode_details,  # Store the detailed data
             'upi': upi,
             'sdi': sdi
         }
@@ -263,50 +397,97 @@ def run_single_simulation(params):
             os.remove(db_path)
 
 def create_fps_visualizations(results, output_dir):
-    """Create comprehensive visualizations for SDI analysis"""
+    print("Starting visualization...")
+    print(f"Number of results: {len(results)}")
+    
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Convert results to DataFrame
     df_rows = []
-    for r in results:
+    for idx, r in enumerate(results):
+        print(f"Processing result {idx}:")
+        print(f"Result structure: {r.keys()}")
+        
+        if 'subsidy_pool' not in r:
+            print(f"Missing subsidy_pool in result {idx}")
+            continue
+            
         subsidy_pool = r['subsidy_pool']
         for income_level in ['low', 'middle', 'high']:
+            if income_level not in r:
+                print(f"Missing {income_level} in result {idx}")
+                continue
+                
             metrics = r[income_level]
+            print(f"Metrics for {income_level}: {metrics}")
+            
             df_rows.append({
                 'Subsidy_Pool': subsidy_pool,
                 'Income_Level': income_level,
-                'SUR': metrics['sur'],
-                'MAE': metrics['mae'],
-                'UPI': metrics['upi'],
-                'SDI': metrics['sdi']
+                'SUR': float(metrics['sur'][0] if isinstance(metrics['sur'], tuple) else metrics['sur']),
+                'MAE': float(metrics['mae'][0] if isinstance(metrics['mae'], tuple) else metrics['mae']),
+                'UPI': float(metrics['upi'][0] if isinstance(metrics['upi'], tuple) else metrics['upi']),
+                'SDI': float(metrics['sdi'][0] if isinstance(metrics['sdi'], tuple) else metrics['sdi'])
             })
-    
+
+    if not df_rows:
+        print("No data rows generated")
+        return None
+        
     df = pd.DataFrame(df_rows)
+    print(f"DataFrame shape: {df.shape}")
+    print(f"DataFrame head:\n{df.head()}")
 
     # 1. Individual Metric Trends
     metrics = ['SUR', 'MAE', 'UPI']
     fig, axes = plt.subplots(3, 1, figsize=(12, 15))
-    
+
     for idx, metric in enumerate(metrics):
+        ax = axes[idx]
+        
         for income in ['low', 'middle', 'high']:
             data = df[df['Income_Level'] == income]
-            axes[idx].scatter(data['Subsidy_Pool'], data[metric], 
-                            label=f'{income.capitalize()} Income',
-                            alpha=0.6)
             
-            # Add trend line
+            # Plot scatter points
+            ax.scatter(data['Subsidy_Pool'], data[metric], 
+                    label=f'{income.capitalize()} Income',
+                    alpha=0.6)
+            
+            # Fit polynomial and create smooth curve
             z = np.polyfit(data['Subsidy_Pool'], data[metric], 2)
             p = np.poly1d(z)
-            x_smooth = np.linspace(data['Subsidy_Pool'].min(), data['Subsidy_Pool'].max(), 100)
-            axes[idx].plot(x_smooth, p(x_smooth), '--', alpha=0.8)
             
-        axes[idx].set_title(f'{metric} vs Subsidy Pool Size')
-        axes[idx].set_xlabel('Subsidy Pool Size')
-        axes[idx].set_ylabel(metric)
-        axes[idx].legend()
-        axes[idx].grid(True, alpha=0.3)
-    
+            # Create smooth curve for plotting
+            x_smooth = np.linspace(data['Subsidy_Pool'].min(), data['Subsidy_Pool'].max(), 100)
+            y_smooth = p(x_smooth)
+            
+            # Plot trend line
+            ax.plot(x_smooth, p(x_smooth), '--', alpha=0.8)
+            
+            # Find maximum value point
+            max_idx = np.argmax(y_smooth)
+            opt_x = x_smooth[max_idx]
+            opt_y = y_smooth[max_idx]
+            
+            # Only plot if the optimal point is within data range
+            if data['Subsidy_Pool'].min() <= opt_x <= data['Subsidy_Pool'].max():
+                # Plot optimal point
+                ax.scatter(opt_x, opt_y, color='red', marker='*', s=100, zorder=5)
+                
+                # Add annotation with actual values
+                ax.annotate(f'Optimal ({income}): \n({opt_x:.0f}, {opt_y:.3f})',
+                        xy=(opt_x, opt_y),
+                        xytext=(10, 10),
+                        textcoords='offset points',
+                        bbox=dict(facecolor='white', alpha=0.7),
+                        arrowprops=dict(arrowstyle='->'))
+        
+        ax.set_title(f'{metric} vs Subsidy Pool Size')
+        ax.set_xlabel('Subsidy Pool Size')
+        ax.set_ylabel(metric)
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'metric_trends.png'))
     plt.close()
@@ -316,15 +497,36 @@ def create_fps_visualizations(results, output_dir):
     for income in ['low', 'middle', 'high']:
         data = df[df['Income_Level'] == income]
         plt.scatter(data['Subsidy_Pool'], data['SDI'], 
-                   label=f'{income.capitalize()} Income',
-                   alpha=0.6)
+                label=f'{income.capitalize()} Income',
+                alpha=0.6)
         
-        # Add trend line
+        # Fit polynomial and create smooth curve
         z = np.polyfit(data['Subsidy_Pool'], data['SDI'], 2)
         p = np.poly1d(z)
+        
+        # Create smooth curve for plotting
         x_smooth = np.linspace(data['Subsidy_Pool'].min(), data['Subsidy_Pool'].max(), 100)
+        y_smooth = p(x_smooth)
+        
+        # Plot trend line
         plt.plot(x_smooth, p(x_smooth), '--', alpha=0.8)
-    
+        
+        # Find maximum value point
+        max_idx = np.argmax(y_smooth)
+        opt_x = x_smooth[max_idx]
+        opt_y = y_smooth[max_idx]
+        
+        # Only plot if the optimal point is within data range
+        if data['Subsidy_Pool'].min() <= opt_x <= data['Subsidy_Pool'].max():
+            # Plot optimal point
+            plt.scatter(opt_x, opt_y, color='red', marker='*', s=100, zorder=5)
+            plt.annotate(f'Optimal ({income}): \n({opt_x:.0f}, {opt_y:.3f})',
+                        xy=(opt_x, opt_y),
+                        xytext=(10, 10),
+                        textcoords='offset points',
+                        bbox=dict(facecolor='white', alpha=0.7),
+                        arrowprops=dict(arrowstyle='->'))
+
     plt.title('Combined SDI Score vs Subsidy Pool Size')
     plt.xlabel('Subsidy Pool Size')
     plt.ylabel('SDI Score')
@@ -439,28 +641,38 @@ def create_combined_sdi_plot(df, output_dir):
 def find_optimal_subsidy(x, y):
     """
     Find the optimal subsidy percentage that maximizes SDI score
-    using polynomial fitting and calculus
+    by identifying the highest observed SDI value and using curve fitting
+    for interpolation between points.
     """
-    # Fit quadratic polynomial
+    if len(x) < 3:
+        return x[np.argmax(y)]
+        
+    # First approach: Find the actual maximum in the data
+    max_idx = np.argmax(y)
+    max_x_observed = x[max_idx]
+    max_y_observed = y[max_idx]
+    
+    # Second approach: Fit a quadratic curve for interpolation
     z = np.polyfit(x, y, 2)
     p = np.poly1d(z)
-    
-    # Find critical point (maximum) by taking derivative
-    # For quadratic ax^2 + bx + c, maximum occurs at x = -b/(2a)
     a, b, c = z
-    if a == 0:  # Linear case
-        return x[np.argmax(y)]
     
-    critical_point = -b / (2 * a)
+    # Only use curve fitting if it produces a maximum within our range
+    if a < 0:  # Parabola opens downward (has a maximum)
+        critical_point = -b / (2 * a)
+        x_min, x_max = min(x), max(x)
+        
+        if x_min <= critical_point <= x_max:
+            predicted_y = p(critical_point)
+            
+            # If the fitted curve predicts a higher value,
+            # and that value is reasonable (not dramatically higher),
+            # use the fitted maximum
+            if predicted_y > max_y_observed and predicted_y <= max_y_observed * 1.1:
+                return critical_point
     
-    # Check if critical point is within the data range
-    x_min, x_max = min(x), max(x)
-    if critical_point < x_min:
-        return x_min
-    elif critical_point > x_max:
-        return x_max
-    
-    return critical_point
+    # Default: return the x-value with the highest observed y
+    return max_x_observed
 
 def analyze_optimal_subsidies(df):
     """
@@ -505,7 +717,6 @@ def analyze_optimal_subsidies(df):
 
 
 def create_sdi_score_VS_subsidy_percentage(df, output_dir):
-    # Create one figure with three subplots (one per income level)
     fig, axes = plt.subplots(3, 1, figsize=(10, 15), sharex=True)
     income_levels = ['low', 'middle', 'high']
     
@@ -515,9 +726,6 @@ def create_sdi_score_VS_subsidy_percentage(df, output_dir):
         'car': ('coral', 'Car Subsidy', 'Car_Subsidy'),
         'bike': ('blue', 'Bike Subsidy', 'Bike_Subsidy')
     }
-
-    # Find optimal subsidies first
-    optimal_subsidies = analyze_optimal_subsidies(df)
 
     # Create plots for each income level
     for i, income in enumerate(income_levels):
@@ -536,36 +744,41 @@ def create_sdi_score_VS_subsidy_percentage(df, output_dir):
                 ax.scatter(mode_data[column], mode_data['SDI'], 
                          color=color, alpha=0.6, label=label)
                 
-                # Add polynomial trend line
                 if len(mode_data) > 2:
+                    # Fit polynomial and create smooth curve
                     x = mode_data[column].values
                     y = mode_data['SDI'].values
-                    
-                    # Calculate the overall x range for consistent line lengths
-                    x_min = min(x)
-                    x_max = max(x)
-                    
-                    # Fit quadratic polynomial
                     z = np.polyfit(x, y, 2)
                     p = np.poly1d(z)
                     
-                    # Create smooth curve with more points
-                    x_smooth = np.linspace(x_min, x_max, 100)
-                    ax.plot(x_smooth, p(x_smooth), '--', color=color, alpha=0.7,
-                           linewidth=2)
-
-                    # Plot optimal point if available
-                    if income in optimal_subsidies and mode in optimal_subsidies[income]:
-                        opt = optimal_subsidies[income][mode]
-                        ax.plot(opt['optimal_percentage'], opt['predicted_sdi'], 
-                               'o', color=color, 
-                               markersize=10, markerfacecolor='none',
-                               markeredgewidth=2)
+                    # Create smooth curve for plotting
+                    x_smooth = np.linspace(min(x), max(x), 100)
+                    y_smooth = p(x_smooth)
+                    
+                    # Plot trend line
+                    ax.plot(x_smooth, p(x_smooth), '--', color=color, alpha=0.7)
+                    
+                    # Find maximum value point
+                    max_idx = np.argmax(y_smooth)
+                    opt_x = x_smooth[max_idx]
+                    opt_y = y_smooth[max_idx]
+                    
+                    # Only plot if the optimal point is within data range
+                    if min(x) <= opt_x <= max(x):
+                        # Plot optimal point using plot instead of scatter
+                        ax.plot(opt_x, opt_y, 
+                              'o',  # marker style
+                              color=color,
+                              ms=10,  # marker size
+                              mfc='none',  # marker face color
+                              mew=2,  # marker edge width
+                              zorder=5)
                         
-                        # Add annotation for optimal point
-                        ax.annotate(f'Optimal: {opt["optimal_percentage"]:.3f}',
-                                  xy=(opt['optimal_percentage'], opt['predicted_sdi']),
-                                  xytext=(10, 10), textcoords='offset points',
+                        # Add annotation
+                        ax.annotate(f'Optimal: {opt_x:.3f}',
+                                  xy=(opt_x, opt_y),
+                                  xytext=(10, 10),
+                                  textcoords='offset points',
                                   bbox=dict(facecolor='white', edgecolor=color, alpha=0.7),
                                   arrowprops=dict(arrowstyle='->'))
 
@@ -583,24 +796,10 @@ def create_sdi_score_VS_subsidy_percentage(df, output_dir):
     # Improve spacing between subplots
     plt.tight_layout()
     
-    # Print optimal subsidy analysis
-    print("\nOptimal Subsidy Analysis:")
-    print("=" * 50)
-    for income in optimal_subsidies:
-        print(f"\n{income.capitalize()} Income:")
-        print("-" * 30)
-        for mode in optimal_subsidies[income]:
-            opt = optimal_subsidies[income][mode]
-            print(f"{mode}:")
-            print(f"  Optimal subsidy: {opt['optimal_percentage']:.3f}")
-            print(f"  Predicted SDI: {opt['predicted_sdi']:.3f}")
-    
-    # Save the figure with high DPI for better quality
+    # Save the figure
     plt.savefig(os.path.join(output_dir, 'Income_sdi_vs_subsidies_combined.png'), 
                 dpi=300, bbox_inches='tight')
     plt.close()
-    
-    return optimal_subsidies
 
 
 def create_pbs_visualizations(results, output_dir):
@@ -812,7 +1011,7 @@ def generate_parameter_sets(analysis_type, base_parameters, num_simulations):
     parameter_tracker = ParameterTracker(analysis_type='SDI')
     
     if analysis_type == 'FPS':
-        subsidy_pools = np.linspace(1000, 40000, num_simulations)
+        subsidy_pools = np.linspace(2880, 180000, num_simulations)
         
         for sim_idx, pool_size in enumerate(subsidy_pools):
             params = base_parameters.copy()
@@ -840,17 +1039,26 @@ def generate_parameter_sets(analysis_type, base_parameters, num_simulations):
                                 PARAMETER_RANGES['service'][f'{provider}_price'])
                     
                     elif param_group == 'maas':
-                        for param, range_vals in PARAMETER_RANGES['maas'].items():
-                            params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS'][param] = generate_random_param(range_vals)
-                    
+                        # Initialize maas parameters if not exist
+                        if 'DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS' not in params:
+                            params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS'] = {}
+
+                        # Update S_base, alpha, and delta
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['S_base'] = generate_random_param(PARAMETER_RANGES['maas']['S_base'])
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['alpha'] = generate_random_param(PARAMETER_RANGES['maas']['alpha'])
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['delta'] = generate_random_param(PARAMETER_RANGES['maas']['delta'])
                     elif param_group == 'public_transport':
-                        public_price_table = {}
-                        for mode, periods in PARAMETER_RANGES['public_transport'].items():
-                            public_price_table[mode] = {
-                                period: generate_random_param(range_vals)
-                                for period, range_vals in periods.items()
+                        # Initialize the dictionary
+                        params['public_price_table'] = {
+                            'train': {
+                                'on_peak': generate_random_param(PARAMETER_RANGES['public_transport']['train']['on_peak']),
+                                'off_peak': generate_random_param(PARAMETER_RANGES['public_transport']['train']['off_peak'])
+                            },
+                            'bus': {
+                                'on_peak': generate_random_param(PARAMETER_RANGES['public_transport']['bus']['on_peak']),
+                                'off_peak': generate_random_param(PARAMETER_RANGES['public_transport']['bus']['off_peak'])
                             }
-                        params['public_price_table'] = public_price_table
+                        }
                     
                     elif param_group == 'congestion':
                         for param, range_vals in PARAMETER_RANGES['congestion'].items():
@@ -876,17 +1084,25 @@ def generate_parameter_sets(analysis_type, base_parameters, num_simulations):
                                 PARAMETER_RANGES['service'][f'{provider}_price'])
                     
                     elif param_group == 'maas':
-                        for param, range_vals in PARAMETER_RANGES['maas'].items():
-                            params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS'][param] = np.mean(range_vals)
+                        if 'DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS' not in params:
+                            params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS'] = {}
+                            
+                        # Use mean values for S_base, alpha, and delta
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['S_base'] = np.mean(PARAMETER_RANGES['maas']['S_base'])
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['alpha'] = np.mean(PARAMETER_RANGES['maas']['alpha'])
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['delta'] = np.mean(PARAMETER_RANGES['maas']['delta'])
                     
                     elif param_group == 'public_transport':
-                        public_price_table = {}
-                        for mode, periods in PARAMETER_RANGES['public_transport'].items():
-                            public_price_table[mode] = {
-                                period: np.mean(range_vals)
-                                for period, range_vals in periods.items()
+                        params['public_price_table'] = {
+                            'train': {
+                                'on_peak': np.mean(PARAMETER_RANGES['public_transport']['train']['on_peak']),
+                                'off_peak': np.mean(PARAMETER_RANGES['public_transport']['train']['off_peak'])
+                            },
+                            'bus': {
+                                'on_peak': np.mean(PARAMETER_RANGES['public_transport']['bus']['on_peak']),
+                                'off_peak': np.mean(PARAMETER_RANGES['public_transport']['bus']['off_peak'])
                             }
-                        params['public_price_table'] = public_price_table
+                        }
                     
                     elif param_group == 'congestion':
                         for param, range_vals in PARAMETER_RANGES['congestion'].items():
@@ -898,16 +1114,16 @@ def generate_parameter_sets(analysis_type, base_parameters, num_simulations):
                 params['subsidy_config'] = SubsidyPoolConfig('daily', float(pool_size))
             else:
                 # Use median subsidy pool size when subsidy is not being varied
-                median_pool_size = 20000  # Midpoint of (1000, 40000)
+                optimal_pool_size = PBS_SUBSIDY_DEFAULTS  
                 params['subsidy_dataset'] = FPS_SUBSIDY_DEFAULTS
-                params['subsidy_config'] = SubsidyPoolConfig('daily', float(median_pool_size))
+                params['subsidy_config'] = SubsidyPoolConfig('daily', float(optimal_pool_size))
             
             params['_analysis_type'] = 'FPS'
             parameter_tracker.record_parameters(params, sim_idx)
             parameter_sets.append(params)
     
     elif analysis_type == 'PBS':
-        modes = ['bike', 'car', 'MaaS_Bundle']
+        modes = ['bike', 'car', 'MaaS_Bundle', 'public']
         points_per_mode = num_simulations // len(modes)
         
         for i in range(points_per_mode * len(modes)):
@@ -938,17 +1154,27 @@ def generate_parameter_sets(analysis_type, base_parameters, num_simulations):
                                 PARAMETER_RANGES['service'][f'{provider}_price'])
                     
                     elif param_group == 'maas':
-                        for param, range_vals in PARAMETER_RANGES['maas'].items():
-                            params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS'][param] = generate_random_param(range_vals)
-                    
+                        # Initialize maas parameters if not exist
+                        if 'DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS' not in params:
+                            params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS'] = {}
+
+                        # Update S_base, alpha, and delta
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['S_base'] = generate_random_param(PARAMETER_RANGES['maas']['S_base'])
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['alpha'] = generate_random_param(PARAMETER_RANGES['maas']['alpha'])
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['delta'] = generate_random_param(PARAMETER_RANGES['maas']['delta'])
+
                     elif param_group == 'public_transport':
-                        public_price_table = {}
-                        for mode, periods in PARAMETER_RANGES['public_transport'].items():
-                            public_price_table[mode] = {
-                                period: generate_random_param(range_vals)
-                                for period, range_vals in periods.items()
+                        # Initialize the dictionary
+                        params['public_price_table'] = {
+                            'train': {
+                                'on_peak': generate_random_param(PARAMETER_RANGES['public_transport']['train']['on_peak']),
+                                'off_peak': generate_random_param(PARAMETER_RANGES['public_transport']['train']['off_peak'])
+                            },
+                            'bus': {
+                                'on_peak': generate_random_param(PARAMETER_RANGES['public_transport']['bus']['on_peak']),
+                                'off_peak': generate_random_param(PARAMETER_RANGES['public_transport']['bus']['off_peak'])
                             }
-                        params['public_price_table'] = public_price_table
+                        }
                     
                     elif param_group == 'congestion':
                         for param, range_vals in PARAMETER_RANGES['congestion'].items():
@@ -974,18 +1200,26 @@ def generate_parameter_sets(analysis_type, base_parameters, num_simulations):
                                 PARAMETER_RANGES['service'][f'{provider}_price'])
                     
                     elif param_group == 'maas':
-                        for param, range_vals in PARAMETER_RANGES['maas'].items():
-                            params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS'][param] = np.mean(range_vals)
+                        if 'DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS' not in params:
+                            params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS'] = {}
+                            
+                        # Use mean values for S_base, alpha, and delta
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['S_base'] = np.mean(PARAMETER_RANGES['maas']['S_base'])
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['alpha'] = np.mean(PARAMETER_RANGES['maas']['alpha'])
+                        params['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['delta'] = np.mean(PARAMETER_RANGES['maas']['delta'])
                     
                     elif param_group == 'public_transport':
-                        public_price_table = {}
-                        for mode, periods in PARAMETER_RANGES['public_transport'].items():
-                            public_price_table[mode] = {
-                                period: np.mean(range_vals)
-                                for period, range_vals in periods.items()
+                        params['public_price_table'] = {
+                            'train': {
+                                'on_peak': np.mean(PARAMETER_RANGES['public_transport']['train']['on_peak']),
+                                'off_peak': np.mean(PARAMETER_RANGES['public_transport']['train']['off_peak'])
+                            },
+                            'bus': {
+                                'on_peak': np.mean(PARAMETER_RANGES['public_transport']['bus']['on_peak']),
+                                'off_peak': np.mean(PARAMETER_RANGES['public_transport']['bus']['off_peak'])
                             }
-                        params['public_price_table'] = public_price_table
-                    
+                        }
+                                        
                     elif param_group == 'congestion':
                         for param, range_vals in PARAMETER_RANGES['congestion'].items():
                             params[f'CONGESTION_{param.upper()}'] = np.mean(range_vals)
@@ -1005,7 +1239,7 @@ def generate_parameter_sets(analysis_type, base_parameters, num_simulations):
                             subsidy_config[income_level][mode] = np.mean(range_vals)
                 
                 params['subsidy_dataset'] = subsidy_config
-                params['subsidy_config'] = SubsidyPoolConfig('daily', float('inf'))
+                params['subsidy_config'] = SubsidyPoolConfig('daily', float(PBS_SUBSIDY_DEFAULTS))
             else:
                 # Use median values for all PBS subsidy rates when subsidy is not being varied
                 subsidy_config = {income_level: {} for income_level in ['low', 'middle', 'high']}
@@ -1082,10 +1316,6 @@ if __name__ == "__main__":
         },
         'AFFORDABILITY_THRESHOLDS': {'low': 25, 'middle': 85, 'high': 250},
         'FLEXIBILITY_ADJUSTMENTS': {'low': 1.05, 'medium': 1.0, 'high': 0.95},
-        'VALUE_OF_TIME': {'low': 9.64, 'middle': 23.7, 'high': 67.2},
-        'DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS': {
-            'S_base': 0.08, 'alpha': 0.2, 'delta': 0.5
-        },
         'ALPHA_VALUES': {
         'UberLike1': 0.5,
         'UberLike2': 0.5,
@@ -1160,17 +1390,18 @@ if __name__ == "__main__":
     # fps_results, fps_stats = run_sdi_analysis('FPS', base_parameters, 35, 8) #number of simulations, number of CPUS
     #pbs_results, pbs_stats = run_sdi_analysis('PBS', base_parameters, 6, 8)
     # Run analysis for different parameter variations
-    subsidy_results, subsidy_stats = run_sdi_analysis('FPS', 
-        {**base_parameters, 'varied_mode': 'all'}, 30, 8)
+    # subsidy_results, subsidy_stats = run_sdi_analysis('FPS', 
+    #     {**base_parameters, 'varied_mode': 'all'}, 30, 8)
     # 'varied_mode' Options: 'subsidy', 'utility', 'service', 'maas', 'congestion', 'all'
     
-    subsidy_results, subsidy_stats = run_sdi_analysis('PBS', 
-        {**base_parameters, 'varied_mode': 'all'}, 72, 8)
-    # service_results, service_stats = run_sdi_analysis('FPS',
-    #     {**base_parameters, 'varied_mode': 'service'}, 25, 8)
+    # subsidy_results, subsidy_stats = run_sdi_analysis('PBS', 
+    #     {**base_parameters, 'varied_mode': 'subsidy'}, 150, 8)
+    service_results, service_stats = run_sdi_analysis('FPS',
+        {**base_parameters, 'varied_mode': 'service'}, 1, 8)
     
     # # For comprehensive analysis
     # full_results, full_stats = run_sdi_analysis('FPS',
     #     {**base_parameters, 'varied_mode': 'all'}, 25, 8)
 
-    print(subsidy_results, subsidy_stats)
+    # print(subsidy_results, subsidy_stats)
+    

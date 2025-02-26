@@ -110,18 +110,18 @@ class ServiceProvider(Agent):
 
     def get_travel_speed(self, mode, current_ticks):
         if mode == 'bus':
-            return 1 #step/stop
+            return 1.8 #step/stop
         elif mode == 'train': #For 1 station, how many step is needed.
-            return 1.0 #step/stop
+            return 3 #step/stop
         elif mode == 'walk': # For 1 unit length, how long do they need - > which means, for 
-            return 1 #unit length/step
+            return 0.75 #unit length/step
         elif mode == 'bike':
-            return 2 #unit length/step
+            return 2.5 #unit length/step
         elif mode == 'car':
             if self.check_is_peak(current_ticks):
-                return 5
+                return 16
             else:
-                return 7
+                return 19
         else:
             print(f"Unknown mode: {mode}")
             return 0  # Default speed if mode is unknown
@@ -236,7 +236,7 @@ class ServiceProvider(Agent):
                     )
                     session.add(booking_log)
                     session.commit()
-                    print(f"Successfully recorded booking for request_id {request_id}")
+                    #print(f"Successfully recorded booking for request_id {request_id}")
                 else:
                     print(f"No service found for company name: {company_name} in table: {provider_table}")
                     
@@ -297,6 +297,10 @@ class ServiceProvider(Agent):
             print(f"Error updating availability: {e}")
 
     def dynamic_pricing_share(self):
+        """
+        Dynamic pricing for shared services that accounts for both direct and MaaS bookings.
+        Uses the existing step-based database structure while considering actual utilization.
+        """
         try:
             service_categories = {
                 'UberLike': ['UberLike1', 'UberLike2'],
@@ -304,26 +308,30 @@ class ServiceProvider(Agent):
             }
             current_step = self.model.get_current_step()
 
-            for category, service_tables in service_categories.items():
-                for service_table_name in service_tables:
-                    service_table = self.get_service_table(service_table_name)
+            with self.Session() as session:
+                # For each service category and provider
+                for category, service_tables in service_categories.items():
+                    for service_table_name in service_tables:
+                        service_table = self.get_service_table(service_table_name)
+                        alpha = self.alpha_values.get(service_table_name, 0.5)
+                        base_demand_ratio = 0.5  # DRC baseline
 
-                    alpha = self.alpha_values.get(service_table_name, 0.5)
-                    base_demand_ratio = 0.5  # DRC baseline
+                        # Get the previous step's data
+                        previous_services = session.query(service_table).filter(
+                            service_table.step_count == current_step - 1
+                        ).all()
 
-                    # Fetch the previous step's data using a separate session
-                    with self.Session() as prev_session:
-                        previous_services = prev_session.query(service_table).filter(service_table.step_count == current_step - 1).all()
-
-                    # Create a new session for updating the current step's data
-                    with self.Session() as session:
-                        # Fetch the new rows created for the current step
-                        new_services = session.query(service_table).filter(service_table.step_count == current_step).all()
+                        # Get the current step's data
+                        new_services = session.query(service_table).filter(
+                            service_table.step_count == current_step
+                        ).all()
 
                         for service in new_services:
-                            base_price = service.base_price  # Consistently use service.base_price for base price
+                            base_price = service.base_price
 
+                            # Update prices for each future time slot
                             for i in range(6):
+                                # Get current availability and capacity
                                 availability = getattr(service, f'availability_{i}')
                                 total_vehicles = service.capacity
                                 occupied_vehicles = total_vehicles - availability
@@ -331,8 +339,8 @@ class ServiceProvider(Agent):
                                 # Calculate DRC (Demand-Relative-to-Capacity Ratio)
                                 DRC = occupied_vehicles / total_vehicles
 
-                                # Fetch the previous step's price for the same time slot
-                                prev_price = base_price  # Default to base price if no previous data is available
+                                # Get previous price and occupancy
+                                prev_price = base_price
                                 prev_occupied = 0
                                 for prev_service in previous_services:
                                     prev_price = getattr(prev_service, f'current_price_{i}', base_price)
@@ -340,29 +348,27 @@ class ServiceProvider(Agent):
                                     prev_occupied = total_vehicles - prev_availability
                                     break
 
-                                # Determine demand change (difference from the previous step)
+                                # Calculate demand change
                                 demand_change = (occupied_vehicles - prev_occupied) / total_vehicles
 
-                                # Price adjustment based on DRC and demand change
+                                # Calculate price adjustment
                                 if DRC < base_demand_ratio:
                                     price_adjustment = -alpha * (base_demand_ratio - DRC) * (1 + demand_change)
                                 else:
                                     price_adjustment = alpha * (DRC - base_demand_ratio) * (1 + demand_change)
 
-                                # Calculate the new dynamic price
+                                # Calculate new price with bounds
                                 dynamic_price = prev_price * (1 + price_adjustment)
-
-                                # Enforce price boundaries based on base_price
                                 dynamic_price = max(min(dynamic_price, base_price * 1.8), base_price * 0.2)
 
-                                # Update the service price for the current step
+                                # Update the price
                                 setattr(service, f'current_price_{i}', dynamic_price)
 
-                        # Commit only the changes to new_services for the current step
-                        session.commit()
+                            session.commit()
 
         except SQLAlchemyError as e:
             print(f"Error updating pricing: {e}")
+            session.rollback()
 
 
     def initialize_availability(self, current_step):

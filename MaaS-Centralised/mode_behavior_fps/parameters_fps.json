@@ -1,0 +1,113 @@
+{
+    "analysis_type": "FPS",
+    "num_simulations": 8,
+    "base_parameters": {
+        "num_commuters": 120,
+        "grid_width": 55,
+        "grid_height": 55,
+        "data_income_weights": [
+            0.5,
+            0.3,
+            0.2
+        ],
+        "data_health_weights": [
+            0.9,
+            0.1
+        ],
+        "data_payment_weights": [
+            0.8,
+            0.2
+        ],
+        "data_age_distribution": {
+            "(18, 25)": 0.2,
+            "(26, 35)": 0.3,
+            "(36, 45)": 0.2,
+            "(46, 55)": 0.15,
+            "(56, 65)": 0.1,
+            "(66, 75)": 0.05
+        },
+        "data_disability_weights": [
+            0.2,
+            0.8
+        ],
+        "data_tech_access_weights": [
+            0.95,
+            0.05
+        ],
+        "CHANCE_FOR_INSERTING_RANDOM_TRAFFIC": 0.2,
+        "ASC_VALUES": {
+            "car": 100,
+            "bike": 100,
+            "public": 100,
+            "walk": 100,
+            "maas": 100,
+            "default": 0
+        },
+        "UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS": {
+            "beta_C": -0.05,
+            "beta_T": -0.06
+        },
+        "UTILITY_FUNCTION_BASE_COEFFICIENTS": {
+            "beta_C": -0.07017385641016766,
+            "beta_T": -0.05836659411889122,
+            "beta_W": -0.01,
+            "beta_A": -0.01,
+            "alpha": -0.01
+        },
+        "PENALTY_COEFFICIENTS": {
+            "disability_bike_walk": 0.8,
+            "age_health_bike_walk": 0.3,
+            "no_tech_access_car_bike": 0.1
+        },
+        "AFFORDABILITY_THRESHOLDS": {
+            "low": 25,
+            "middle": 85,
+            "high": 250
+        },
+        "FLEXIBILITY_ADJUSTMENTS": {
+            "low": 1.05,
+            "medium": 1.0,
+            "high": 0.95
+        },
+        "VALUE_OF_TIME": {
+            "low": 9.64,
+            "middle": 23.7,
+            "high": 67.2
+        },
+        "public_price_table": {
+            "train": {
+                "on_peak": 2,
+                "off_peak": 1.5
+            },
+            "bus": {
+                "on_peak": 1,
+                "off_peak": 0.8
+            }
+        },
+        "ALPHA_VALUES": {
+            "UberLike1": 0.5,
+            "UberLike2": 0.5,
+            "BikeShare1": 0.5,
+            "BikeShare2": 0.5
+        },
+        "DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS": {
+            "S_base": 0.08548245606760654,
+            "alpha": 0.2,
+            "delta": 0.5
+        },
+        "BACKGROUND_TRAFFIC_AMOUNT": 70,
+        "CONGESTION_ALPHA": 0.25,
+        "CONGESTION_BETA": 4,
+        "CONGESTION_CAPACITY": 4,
+        "CONGESTION_T_IJ_FREE_FLOW": 2,
+        "uber_like1_capacity": 8,
+        "uber_like1_price": 6,
+        "uber_like2_capacity": 9,
+        "uber_like2_price": 6.5,
+        "bike_share1_capacity": 10,
+        "bike_share1_price": 1,
+        "bike_share2_capacity": 12,
+        "bike_share2_price": 1.2,
+        "simulation_steps": 20
+    }
+}

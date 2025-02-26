@@ -217,7 +217,7 @@ class MobilityModel(Model):
             else:
                 session.add(new_commuter_info)
                 session.commit()
-                print(f"Commuter {commuter.unique_id} info recorded successfully.")
+                #print(f"Commuter {commuter.unique_id} info recorded successfully.")
 
 
     def update_commuter_info_log(self, commuter):
@@ -298,19 +298,19 @@ class MobilityModel(Model):
             if commuter.payment_scheme == 'PAYG':
                 # Ensure at least one trip is available for evening peak
                 if peak_period == 'morning_peak':
-                    return trips_in_peak < 1 and trips_in_current_day < 2
+                    return trips_in_peak < 3 and trips_in_current_day < 6
                 else:
-                    return trips_in_peak < 1 and trips_in_current_day < 3
+                    return trips_in_peak < 3 and trips_in_current_day < 6
             elif commuter.payment_scheme == 'subscription':
                 # Ensure multiple trips can be made throughout the day
                 if peak_period == 'morning_peak':
-                    return trips_in_peak < 2 and trips_in_current_day < 4
+                    return trips_in_peak < 3 and trips_in_current_day < 6
                 else:
-                    return trips_in_peak < 2 and trips_in_current_day < 6
+                    return trips_in_peak < 3 and trips_in_current_day < 6
         else:
             # Allow trips during off-peak if the daily limit has not been reached
             if commuter.payment_scheme == 'PAYG':
-                return trips_in_current_day < 3
+                return trips_in_current_day < 6
             elif commuter.payment_scheme == 'subscription':
                 return trips_in_current_day < 6
 
@@ -328,11 +328,11 @@ class MobilityModel(Model):
 
             # Check current peak period to adjust trip creation probability
             if 36 <= self.current_step % 144 < 60:
-                create_trip_probability = 0.15  # Morning peak
+                create_trip_probability = 0.2  # Morning peak
             elif 90 <= self.current_step % 144 < 114:
-                create_trip_probability = 0.35  # Evening peak
+                create_trip_probability = 0.2  # Evening peak
             else:
-                create_trip_probability = 0.03  # Off-peak
+                create_trip_probability = 0.05  # Off-peak
 
             if random.random() < create_trip_probability:
                 request_id = uuid.uuid4()
@@ -351,7 +351,7 @@ class MobilityModel(Model):
     
     def step(self):
         self.current_step += 1
-        print(f"Step {self.current_step}")
+        #print(f"Step {self.current_step}")
         # Update the system's time step
         self.service_provider_agent.update_time_steps()
 
@@ -359,7 +359,7 @@ class MobilityModel(Model):
 
         for commuter in self.commuter_agents:
             # Create new request based on commuter's needs
-            print(f"Creating new request for Commuter {commuter.unique_id} at Step {self.current_step}")
+            #print(f"Creating new request for Commuter {commuter.unique_id} at Step {self.current_step}")
             self.create_new_request(self.current_step, commuter)
             self.update_commuter_info_log(commuter)
             for request_id, request in list(commuter.requests.items()):
@@ -395,10 +395,10 @@ class MobilityModel(Model):
             commuter.check_travel_status()  # Once the commuter arrives at the destination, increase the availability back
 
         # Update availability based on bookings
-        print(f"Updating availability after bookings")
+        #print(f"Updating availability after bookings")
         self.service_provider_agent.update_availability()
         # Call dynamic_pricing_share to update pricing based on demand
-        print(f"Calling dynamic pricing update")
+        #print(f"Calling dynamic pricing update")
         self.service_provider_agent.dynamic_pricing_share()
             # Probability of inserting random traffic
         random_traffic_probability = self.chance_for_inserting_random_traffic  # 20% chance to insert random traffic
@@ -422,9 +422,6 @@ class MobilityModel(Model):
                 return False
             
             # Debug income weights
-            print(f"Debug - Processing request for commuter {request.commuter_id}")
-            print(f"Income weights: {self.data_income_weights}")
-            print(f"Commuter income level index: {commuter.income_level_index}")
             
             if not (0 <= commuter.income_level_index < len(self.data_income_weights)):
                 print(f"Invalid income level index: {commuter.income_level_index}")

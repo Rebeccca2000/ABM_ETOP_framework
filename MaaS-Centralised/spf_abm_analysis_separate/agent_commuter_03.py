@@ -236,31 +236,77 @@ class Commuter(Agent):
 
     def calculate_generalized_utility(self, price, time, mode, request_id):
         """
-        Calculate the generalized utility for a given mode based on price, time, ASC, and government subsidies.
+        Calculate utility with income-specific coefficients and mode-specific factors.
         
-        Parameters:
-        - price: The cost of using the transportation mode.
-        - time: The duration of the trip (in minutes).
-        - mode: The transportation mode (e.g., 'car', 'bike', 'public').
-        - request_id: The commuter's request ID for referencing specific details (e.g., income level, etc.).
-
-        Returns:
-        - U_j: The generalized utility for mode j.
-        - subsidy_amount: The amount of subsidy applied.
+        Args:
+            price: The cost of using the transportation mode
+            time: The duration of the trip (in minutes)
+            mode: The transportation mode (e.g., 'car', 'bike', 'public', 'MaaS_Bundle')
+            request_id: The commuter's request ID for referencing specific details
         """
-        
-        # Step 1: Get the value of time (VOT)
+        # Get base value of time
         value_of_time = self.get_value_of_time(request_id)
-        
-        # Step 2: Set the coefficients based on the mode and context (e.g., income)
-        coefficients = self.utility_function_base_coefficients.copy()
-        
-
-        # Step 3: Calculate the utility components (price, travel time, and ASC)
         VOT_per_ten_min = value_of_time/6
         
-        # Step 4: Use the set_ASC_values function to get the ASC for the mode
-        def set_ASC_values(mode):
+        # Get base coefficients
+        base_coefficients = self.utility_function_base_coefficients.copy()
+        
+        # Adjust coefficients based on income level
+        if self.income_level == 'high':
+            # High income: Less price sensitive, more time sensitive
+            beta_C = base_coefficients['beta_C'] * 0.9  # Reduce price sensitivity
+            beta_T = base_coefficients['beta_T'] * 1.15  # Increase time sensitivity
+            # comfort_multiplier = 1.5  # Higher value for comfort
+        elif self.income_level == 'middle':
+            # Middle income: Moderate sensitivity to both
+            beta_C = base_coefficients['beta_C'] * 0.95
+            beta_T = base_coefficients['beta_T'] * 1.05
+            # comfort_multiplier = 1.25
+        else:  # low income
+            # Low income: More price sensitive, less time sensitive
+            beta_C = base_coefficients['beta_C'] * 1.15  # Increase price sensitivity
+            beta_T = base_coefficients['beta_T'] * 0.95 # Reduce time sensitivity
+            # comfort_multiplier = 1.0
+
+        # Get mode-specific ASC and apply income-specific adjustments
+        ASC_j = self.set_ASC_values(mode)
+        
+        # Calculate subsidy if applicable
+        income_level = self.income_level
+        subsidy_dataset = self.subsidy_dataset.copy()
+        subsidy_key = self.map_mode_to_subsidy_key(mode)
+        
+        if subsidy_key:
+            subsidy_percentage = subsidy_dataset.get(income_level, {}).get(subsidy_key, 0)
+            subsidy_amount = price * subsidy_percentage
+            actual_subsidy = self.model.maas_agent.check_subsidy_availability(subsidy_amount)
+            price_after_subsidy = price - actual_subsidy
+        else:
+            price_after_subsidy = price
+            actual_subsidy = 0
+
+        # Calculate final utility
+        U_j = (
+            ASC_j +  # Mode-specific constant adjusted by comfort
+            (beta_C * price_after_subsidy) +  # Income-adjusted price sensitivity
+            (beta_T * VOT_per_ten_min * time)  # Income-adjusted time sensitivity
+        )
+
+        return U_j, actual_subsidy
+    
+    def map_mode_to_subsidy_key(self, mode):
+            if 'maas' in mode.lower():
+                return 'MaaS_Bundle'
+            elif 'bike' in mode.lower():
+                return 'bike'
+            elif 'car' in mode.lower() or 'uber' in mode.lower():  # Assuming 'car' includes Uber-like services
+                return 'car'
+            elif 'public' in mode.lower() or 'bus' in mode.lower() or 'train' in mode.lower():
+                return 'public'  # Add this line to map public transport
+            else:
+                return None
+    
+    def set_ASC_values(self, mode):
             """
             Determine the ASC (Alternative-Specific Constant) based on the mode of transport.
             Adjusts the control factor for each mode to influence the mode share.
@@ -271,47 +317,7 @@ class Commuter(Agent):
                     return self.asc_values[mode_key]
             
             # If no match, return the default ASC value
-            return self.asc_values['default']
-        
-        ASC_j = set_ASC_values(mode)
-
-        # Step 5: Apply the government subsidy based on the income level and mode
-        income_level = self.income_level  # Directly accessing self.income_level
-        subsidy_dataset = self.subsidy_dataset.copy()
-
-        def map_mode_to_subsidy_key(mode):
-            if 'maas' in mode.lower():
-                return 'MaaS_Bundle'
-            elif 'bike' in mode.lower():
-                return 'bike'
-            elif 'car' in mode.lower() or 'uber' in mode.lower():  # Assuming 'car' includes Uber-like services
-                return 'car'
-            else:
-                return None
-
-        subsidy_key = map_mode_to_subsidy_key(mode)
-        # If subsidy key is valid, fetch the subsidy percentage; otherwise, default to 0
-        if subsidy_key:
-            subsidy_percentage = subsidy_dataset.get(income_level, {}).get(subsidy_key, 0)  # Default to 0 if no subsidy available
-        else:
-            subsidy_percentage = 0
-        subsidy_amount = price * subsidy_percentage  # Subsidy is a percentage of the price
-        # Request subsidy from the pool
-        actual_subsidy = self.model.maas_agent.check_subsidy_availability(subsidy_amount)
-
-        price_after_subsidy = price - actual_subsidy  # Apply the subsidy
-            
-
-        # Step 6: Calculate the generalized utility with the modified price
-        U_j = (
-            ASC_j +  # The ASC for the specific mode
-            (coefficients['beta_C'] * price_after_subsidy) +  # Price sensitivity (after subsidy)
-            (coefficients['beta_T'] * VOT_per_ten_min * time)  # Travel time sensitivity (includes VOT)
-        )
-
-        # Return both the utility value and the subsidy amount
-        return U_j, actual_subsidy
-  
+            return self.asc_values['default']        
     def accept_service(self, request_id):
 
         request = self.requests.get(request_id)

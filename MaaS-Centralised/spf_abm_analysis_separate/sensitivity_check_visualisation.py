@@ -7,16 +7,35 @@ from pathlib import Path
 import pandas as pd
 from scipy import stats
 import os
+from os.path import join  # Add this if you want to use join() directly
 
 class SensitivityVisualizer:
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, analysis_type):
         """Initialize visualizer with output directory"""
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        # Create analysis-specific directory (either 'fps' or 'pbs')
+        self.output_dir = self.output_dir / analysis_type.lower()
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         
+        # Store analysis type for use in naming
+        self.analysis_type = analysis_type.lower()
         # Set style parameters
         plt.style.use('seaborn-v0_8')
         self.colors = sns.color_palette("husl", 8)
+        
+        # Define metric names
+        self.metric_columns = ['sdi', 'sur', 'mae', 'upi']
+        
+    def _ensure_metric_names(self, df):
+        """Ensure metric names are in the correct case"""
+        rename_dict = {
+            'SDI': 'sdi',
+            'SUR': 'sur',
+            'MAE': 'mae',
+            'UPI': 'upi'
+        }
+        return df.rename(columns=rename_dict)
         
     def plot_parameter_impact_detail(self, param_values, results_df, param_name, stats):
         """Create detailed visualization of parameter impacts on metrics"""
@@ -126,7 +145,7 @@ class SensitivityVisualizer:
         plt.tight_layout()
         return fig
         
-    def plot_summary_dashboard(self, results_df, params_df, param_impacts, interactions):
+    def plot_summary_dashboard(self, results_df):
         """Create summary dashboard of key findings with error handling"""
         fig = plt.figure(figsize=(20, 15))
         gs = plt.GridSpec(3, 3, figure=fig)
@@ -232,18 +251,23 @@ class SensitivityVisualizer:
         components = ['sur', 'mae', 'upi']
         for comp in components:
             sns.regplot(x=param_data, y=results_df[comp], 
-                       label=comp, scatter=False, ax=ax4)
+                       label=comp.upper(), scatter=False, ax=ax4)
         ax4.legend()
         ax4.set_title(f'Component Metrics vs {param_name}')
 
-        # 5. Temporal Evolution
+        # 5. Temporal Evolution if step column exists
         ax5 = fig.add_subplot(gs[3, :])
-        pivot_data = pd.pivot_table(results_df, 
-                                  values='SDI', 
-                                  index='step',
-                                  columns=pd.qcut(param_data, 4, labels=['Q1', 'Q2', 'Q3', 'Q4']))
-        sns.heatmap(pivot_data, cmap='viridis', ax=ax5)
-        ax5.set_title(f'Temporal Evolution by {param_name} Quartiles')
+        if 'step' in results_df.columns:
+            pivot_data = pd.pivot_table(results_df, 
+                                      values='sdi',  # Changed from 'SDI' to 'sdi'
+                                      index='step',
+                                      columns=pd.qcut(param_data, 4, labels=['Q1', 'Q2', 'Q3', 'Q4']))
+            sns.heatmap(pivot_data, cmap='viridis', ax=ax5)
+            ax5.set_title(f'Temporal Evolution by {param_name} Quartiles')
+        else:
+            ax5.text(0.5, 0.5, 'No temporal data available', 
+                    ha='center', va='center')
+            ax5.set_title('Temporal Evolution (Not Available)')
 
         plt.tight_layout()
         plt.savefig(self.output_dir / f'{param_name}_detailed_report.png', 
@@ -285,30 +309,32 @@ class SensitivityVisualizer:
         fig = plt.figure(figsize=(15, 10))
         gs = plt.GridSpec(2, 2, figure=fig)
 
-        # 1. SDI Robustness Overview
+        # 1. SDI Robustness Overview  
         ax1 = fig.add_subplot(gs[0, 0])
         sns.boxplot(data=results_df, y='sdi', x='income_level', ax=ax1)
         ax1.set_title('SDI Robustness by Income Level')
 
         # 2. Parameter Sensitivity Rankings
         ax2 = fig.add_subplot(gs[0, 1])
-        sensitivity_scores = []
-        for param in params_df.columns:
-            if param != 'simulation_id':
-                std_param = (params_df[param] - params_df[param].mean()) / params_df[param].std()
-                sensitivity = np.std(results_df['sdi'] * std_param)
-                sensitivity_scores.append({'parameter': param, 'sensitivity': sensitivity})
-        
-        sensitivity_df = pd.DataFrame(sensitivity_scores)
-        sns.barplot(data=sensitivity_df, x='sensitivity', y='parameter', ax=ax2)
+        if not params_df.empty:
+            sensitivity_scores = []
+            for param in params_df.columns:
+                if param != 'simulation_id':
+                    std_param = (params_df[param] - params_df[param].mean()) / params_df[param].std()
+                    sensitivity = np.std(results_df['sdi'] * std_param)
+                    sensitivity_scores.append({'parameter': param, 'sensitivity_score': sensitivity})
+            
+            if sensitivity_scores:
+                sensitivity_df = pd.DataFrame(sensitivity_scores)
+                sns.barplot(data=sensitivity_df, x='sensitivity_score', y='parameter', ax=ax2)
         ax2.set_title('Parameter Sensitivity Rankings')
 
         # 3. Stability Analysis
         ax3 = fig.add_subplot(gs[1, :])
         pivot_data = pd.pivot_table(results_df, 
-                                  values='SDI',
-                                  index='step',
-                                  columns='income_level')
+                                values='sdi',  # Changed from 'SDI' to 'sdi'
+                                index='step',
+                                columns='income_level')
         pivot_data.plot(ax=ax3, style=['--', '-', ':'])
         ax3.fill_between(pivot_data.index,
                         pivot_data.min(axis=1),
@@ -317,6 +343,6 @@ class SensitivityVisualizer:
         ax3.set_title('SDI Stability Over Time')
 
         plt.tight_layout()
-        plt.savefig(self.output_dir / 'robustness_analysis.png',
-                   dpi=300, bbox_inches='tight')
+        plt.savefig(os.path.join(self.output_dir, 'robustness_analysis.png'),
+                dpi=300, bbox_inches='tight')
         plt.close()

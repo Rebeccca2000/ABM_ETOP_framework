@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, func, case
+from sqlalchemy import create_engine, func, case, or_, and_
 from sqlalchemy.orm import sessionmaker
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,158 +13,283 @@ from agent_subsidy_pool import SubsidyPoolConfig
 import gc
 from scipy.stats import qmc
 import math
-SIMULATION_STEPS = 20
+SIMULATION_STEPS = 30
 num_commuters = 120
 
 def calculate_sur(session, income_level):
-    """Calculate Subsidy Utilization Rate for a given income level with mode differentiation"""
+    """
+    Calculate Subsidy Utilization Rate by measuring the effectiveness of subsidies 
+    in influencing travel behavior and achieving policy goals.
+    
+    Key improvements:
+    - Measures behavioral response to subsidies
+    - Considers temporal distribution
+    - Accounts for mode-specific effectiveness
+    """
     try:
-        # Separate queries for different modes
-        mode_subsidies = {}
-        mode_trips = {}
+        # Part 1: Mode-specific subsidy effectiveness
+        mode_impacts = {}
+        total_trips = 0
         
         for mode in ['bike', 'car', 'MaaS_Bundle']:
-            # Get actual subsidies for each mode
-            actual_subsidies = session.query(
-                func.sum(ServiceBookingLog.government_subsidy)
-            ).select_from(ServiceBookingLog).join(
-                CommuterInfoLog,
-                ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
+            # Get all trips and subsidized trips for this mode and income level
+            trips_query = session.query(
+                ServiceBookingLog
+            ).join(
+                CommuterInfoLog
             ).filter(
                 CommuterInfoLog.income_level == income_level,
                 ServiceBookingLog.record_company_name.like(f'%{mode}%')
-            ).scalar() or 0
+            )
             
-            # Get total trips for each mode
-            total_mode_trips = session.query(
-                func.count(ServiceBookingLog.request_id)
-            ).select_from(ServiceBookingLog).join(
-                CommuterInfoLog,
-                ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
-            ).filter(
+            total_mode_trips = trips_query.count()
+            subsidized_trips = trips_query.filter(
+                ServiceBookingLog.government_subsidy > 0
+            ).count()
+            
+            if total_mode_trips > 0:
+                # Calculate effectiveness as ratio of subsidized to total trips
+                mode_impacts[mode] = subsidized_trips / total_mode_trips
+                total_trips += total_mode_trips
+
+        # Part 2: Temporal distribution effectiveness
+        peak_periods = [(42, 60), (96, 114)]  # Morning and evening peaks
+        peak_utilization = session.query(ServiceBookingLog)\
+            .join(CommuterInfoLog, ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id)\
+            .filter(
                 CommuterInfoLog.income_level == income_level,
-                ServiceBookingLog.record_company_name.like(f'%{mode}%')
-            ).scalar() or 0
+                ServiceBookingLog.government_subsidy > 0,
+                or_(
+                    *[
+                        and_(
+                            ServiceBookingLog.start_time % 144 >= start,
+                            ServiceBookingLog.start_time % 144 < end
+                        ) for start, end in peak_periods
+                    ]
+                )
+            ).count()
+
+        # Calculate temporal distribution score
+        if total_trips > 0:
+            peak_ratio = peak_utilization / total_trips
+            temporal_score = 1 - abs(peak_ratio - 0.6)  # Target: 60% peak, 40% off-peak
+        else:
+            temporal_score = 0
+
+        # Part 3: Calculate final SUR score
+        if mode_impacts:
+            mode_score = sum(impact for impact in mode_impacts.values()) / len(mode_impacts)
+            sur = (0.7 * mode_score + 0.3 * temporal_score)
+            return max(0, min(1, sur))  # Normalize to [0,1]
             
-            mode_subsidies[mode] = actual_subsidies
-            mode_trips[mode] = total_mode_trips
-
-        # Different max rates for different modes
-        max_rates = {
-            'bike': 0.3,
-            'car': 0.2,
-            'MaaS_Bundle': 0.4
-        }
-
-        # Calculate SUR for each mode separately
-        mode_surs = {}
-        for mode in max_rates:
-            max_subsidies = mode_trips[mode] * max_rates[mode] * 100
-            mode_surs[mode] = mode_subsidies[mode] / max_subsidies if max_subsidies > 0 else 0
-
-        # Return weighted average of SURs
-        weights = {'bike': 0.3, 'car': 0.3, 'MaaS_Bundle': 0.4}
-        total_sur = sum(mode_surs[mode] * weights[mode] for mode in weights)
-        
-        return total_sur
+        return 0
 
     except Exception as e:
         print(f"Error calculating SUR for {income_level}: {e}")
         return 0
 
-def calculate_mae(session, income_level):
-    """Calculate Modal Access Equity with explicit mode handling"""
+def calculate_mae(session, income_level, grid_width=55, grid_height=55):
+    """
+    Calculate Modal Access Equity with improved measurement of mode availability
+    and usage patterns across different user groups.
+    
+    Parameters:
+    - session: SQLAlchemy session for database queries
+    - income_level: Income level of the user group being analyzed
+    - grid_width: Width of the simulation grid (default=55)
+    - grid_height: Height of the simulation grid (default=55)
+    
+    The grid dimensions are used to calculate spatial coverage of different modes.
+    We use these to understand how well each transport mode serves different areas
+    of the city grid.
+    """
     try:
-        # Define mode categories explicitly
-        mode_categories = {
-            'bike': ['BikeShare1', 'BikeShare2'],
-            'car': ['UberLike1', 'UberLike2'],
-            'MaaS_Bundle': ['MaaS_Bundle'],
-            'public': ['public', 'bus', 'train']
-        }
-
-        # Get modal shares for the income group with mode categorization
-        income_modal_shares = {}
-        overall_modal_shares = {}
-        
+        # Part 1: Calculate base mode shares
+        mode_shares = {}
         total_trips = 0
-        income_total = 0
         
-        for mode_type, providers in mode_categories.items():
-            # Calculate shares for specific income level
-            income_count = session.query(
-                func.count(ServiceBookingLog.request_id)
-            ).select_from(ServiceBookingLog).join(
-                CommuterInfoLog,
-                ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
+        for mode in ['walk', 'bike', 'car', 'public', 'maas']:
+            trips = session.query(
+                ServiceBookingLog
+            ).join(
+                CommuterInfoLog
             ).filter(
                 CommuterInfoLog.income_level == income_level,
-                ServiceBookingLog.record_company_name.in_(providers)
-            ).scalar() or 0
+                ServiceBookingLog.record_company_name.like(f'%{mode}%')
+            ).count()
             
-            # Calculate overall shares
-            overall_count = session.query(
-                func.count(ServiceBookingLog.request_id)
+            mode_shares[mode] = trips
+            total_trips += trips
+
+        # Part 2: Calculate mode availability scores
+        # These weights represent the baseline availability of each mode
+        availability_weights = {
+            'walk': 1.0,    # Always available
+            'bike': 0.8,    # Weather/infrastructure dependent
+            'car': 0.9,     # High availability
+            'public': 0.7,  # Schedule dependent
+            'maas': 0.85    # Mixed availability
+        }
+
+        # Part 3: Calculate spatial coverage
+        # Using the provided grid dimensions to normalize spatial coverage
+        coverage_scores = {}
+        grid_size = grid_width * grid_height
+        
+        for mode in mode_shares:
+            # Count unique origin-destination pairs for each mode
+            covered_cells = session.query(
+                func.count(func.distinct(
+                    func.concat(
+                        ServiceBookingLog.origin_coordinates,
+                        ServiceBookingLog.destination_coordinates
+                    )
+                ))
             ).filter(
-                ServiceBookingLog.record_company_name.in_(providers)
+                ServiceBookingLog.record_company_name.like(f'%{mode}%')
             ).scalar() or 0
             
-            income_modal_shares[mode_type] = income_count
-            overall_modal_shares[mode_type] = overall_count
-            total_trips += overall_count
-            income_total += income_count
+            # Normalize by total possible grid cells
+            coverage_scores[mode] = covered_cells / grid_size
 
-        # Calculate normalized shares and deviations
-        deviations = []
+        # Part 4: Calculate MAE score
         if total_trips > 0:
-            for mode_type in mode_categories:
-                income_share = income_modal_shares[mode_type] / income_total if income_total > 0 else 0
-                overall_share = overall_modal_shares[mode_type] / total_trips
+            weighted_shares = {}
+            for mode in mode_shares:
+                # Calculate weighted share considering:
+                # - Base usage (actual trips)
+                # - Mode availability
+                # - Spatial coverage
+                base_share = mode_shares[mode] / total_trips
+                weight = availability_weights[mode]
+                coverage = coverage_scores[mode]
                 
-                if overall_share > 0:
-                    deviation = abs(income_share - overall_share) / overall_share
-                    deviations.append(deviation)
+                weighted_shares[mode] = base_share * weight * coverage
 
-        # Return equity score
-        return 1 - (sum(deviations) / len(deviations)) if deviations else 0
+            # Calculate deviation from ideal equal distribution
+            ideal_share = 1 / len(mode_shares)
+            deviations = [
+                abs(share - ideal_share)
+                for share in weighted_shares.values()
+            ]
+            
+            # Final MAE score: 1 minus average deviation
+            mae = 1 - (sum(deviations) / len(deviations))
+            return max(0, min(1, mae))  # Normalize to [0,1]
+            
+        return 0
 
     except Exception as e:
         print(f"Error calculating MAE for {income_level}: {e}")
         return 0
 
 def calculate_upi(session, income_level):
-    """Calculate Usage Pattern Index for a given income level"""
+    """
+    Calculate Usage Pattern Index with enhanced measurement of travel behavior diversity
+    and temporal consistency.
+    
+    Key improvements:
+    - Separates peak and off-peak patterns
+    - Measures usage regularity
+    - Considers trip chaining
+    """
     try:
-        # Calculate Modal Usage Diversity 
+        # Part 1: Calculate temporal usage patterns
+        time_periods = {
+            'morning_peak': (42, 60),    # 7:00-10:00
+            'midday': (60, 96),          # 10:00-16:00
+            'evening_peak': (96, 114),   # 16:00-19:00
+            'night': (114, 42)           # 19:00-7:00
+        }
+        
+        period_patterns = {}
+        total_trips = 0
+        
+        for period_name, (start, end) in time_periods.items():
+            # Get trips in this period
+            period_trips = session.query(
+                ServiceBookingLog
+            ).join(
+                CommuterInfoLog
+            ).filter(
+                CommuterInfoLog.income_level == income_level,
+                or_(
+                    and_(
+                        ServiceBookingLog.start_time % 144 >= start,
+                        ServiceBookingLog.start_time % 144 < end
+                    ),
+                    and_(
+                        start > end,
+                        or_(
+                            ServiceBookingLog.start_time % 144 >= start,
+                            ServiceBookingLog.start_time % 144 < end
+                        )
+                    )
+                )
+            ).count()
+            
+            period_patterns[period_name] = period_trips
+            total_trips += period_trips
+
+        # Part 2: Calculate mode diversity
         unique_modes = session.query(
             func.count(func.distinct(ServiceBookingLog.record_company_name))
-        ).select_from(ServiceBookingLog).join(
-            CommuterInfoLog,
-            ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
+        ).join(
+            CommuterInfoLog
         ).filter(
             CommuterInfoLog.income_level == income_level
         ).scalar() or 0
+        
+        mode_diversity = unique_modes / 5  # Normalize by total possible modes
 
-        total_modes = session.query(
-            func.count(func.distinct(ServiceBookingLog.record_company_name))
-        ).scalar() or 1
-
-        modal_diversity = unique_modes / total_modes if total_modes > 0 else 0
-
-        # Calculate Time Period Coverage
-        active_periods = session.query(
-            func.count(func.distinct(ServiceBookingLog.start_time))
-        ).select_from(ServiceBookingLog).join(
-            CommuterInfoLog,
-            ServiceBookingLog.commuter_id == CommuterInfoLog.commuter_id
+        # Part 3: Calculate trip chaining
+        # Identify sequential trips within 30-minute windows
+        chain_trips = session.query(
+            func.count(ServiceBookingLog.request_id)
+        ).join(
+            CommuterInfoLog
         ).filter(
-            CommuterInfoLog.income_level == income_level
+            CommuterInfoLog.income_level == income_level,
+            ServiceBookingLog.start_time - func.lag(ServiceBookingLog.start_time).over(
+                partition_by=ServiceBookingLog.commuter_id,
+                order_by=ServiceBookingLog.start_time
+            ) <= 3  # 30 minutes (3 time steps)
         ).scalar() or 0
 
-        total_periods = SIMULATION_STEPS
-        time_coverage = active_periods / total_periods if total_periods > 0 else 0
-
-        return modal_diversity * time_coverage
+        # Part 4: Calculate final UPI score
+        if total_trips > 0:
+            # Calculate temporal distribution score
+            temporal_shares = {
+                period: trips/total_trips 
+                for period, trips in period_patterns.items()
+            }
+            
+            # Ideal shares for each period
+            ideal_shares = {
+                'morning_peak': 0.3,
+                'midday': 0.3,
+                'evening_peak': 0.3,
+                'night': 0.1
+            }
+            
+            temporal_score = 1 - sum(
+                abs(temporal_shares.get(period, 0) - share)
+                for period, share in ideal_shares.items()
+            ) / 2
+            
+            # Calculate chain score
+            chain_score = chain_trips / total_trips
+            
+            # Combine scores
+            upi = (
+                0.4 * temporal_score +
+                0.3 * mode_diversity +
+                0.3 * chain_score
+            )
+            
+            return max(0, min(1, upi))  # Normalize to [0,1]
+            
+        return 0
 
     except Exception as e:
         print(f"Error calculating UPI for {income_level}: {e}")

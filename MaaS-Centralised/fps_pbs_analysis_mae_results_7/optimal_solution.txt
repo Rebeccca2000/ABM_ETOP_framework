@@ -1,0 +1,21 @@
+Optimal FPS Value: 100000.0
+Optimal Average MAE: 0.5452
+
+Optimal Subsidy Allocations:
+  high_MaaS_Bundle: 0.3465
+  high_bike: 0.2993
+  high_car: 0.0722
+  high_public: 0.2721
+  low_MaaS_Bundle: 0.2304
+  low_bike: 0.2301
+  low_car: 0.3891
+  low_public: 0.1505
+  middle_MaaS_Bundle: 0.3388
+  middle_bike: 0.2053
+  middle_car: 0.2084
+  middle_public: 0.1055
+
+MAE by Income Level:
+  Low: 0.5625
+  Middle: 0.6865
+  High: 0.1575

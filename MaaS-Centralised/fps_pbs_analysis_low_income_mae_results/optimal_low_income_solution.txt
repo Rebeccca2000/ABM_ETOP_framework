@@ -1,0 +1,13 @@
+Optimal FPS Value for Low-Income: 4000.0
+Optimal Low-Income MAE: 0.7155
+
+Optimal Low-Income Subsidy Allocations:
+  bike: 0.2779
+  car: 0.1785
+  MaaS_Bundle: 0.3615
+  public: 0.1821
+
+MAE by Income Level with this solution:
+  Low: 0.7155
+  Middle: 0.5925
+  High: 0.1322

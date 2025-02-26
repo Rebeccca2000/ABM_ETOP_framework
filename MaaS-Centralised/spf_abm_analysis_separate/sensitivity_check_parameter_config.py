@@ -51,8 +51,22 @@ class ParameterTracker:
                     'price': parameters['bike_share2_price']
                 }
             },
-            'maas_surcharge': parameters['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS'],
-            'public_transport': parameters['public_price_table'],
+            'maas': {  # Changed from 'maas_surcharge'
+            'S_base': parameters['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['S_base'],
+            'alpha': parameters['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['alpha'],
+            'delta': parameters['DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS']['delta']
+            },
+            # With this structure:
+            'public_transport': {
+                'train': {
+                    'on_peak': parameters['public_price_table']['train']['on_peak'],
+                    'off_peak': parameters['public_price_table']['train']['off_peak']
+                },
+                'bus': {
+                    'on_peak': parameters['public_price_table']['bus']['on_peak'],
+                    'off_peak': parameters['public_price_table']['bus']['off_peak']
+                }
+            },
             'congestion_params': {
                 'alpha': parameters.get('CONGESTION_ALPHA'),
                 'beta': parameters.get('CONGESTION_BETA'),
@@ -182,29 +196,32 @@ PARAMETER_RANGES = {
     }
 }
 
-# FPS subsidy settings
 FPS_SUBSIDY_DEFAULTS = {
-    'low': {'bike': 0.317, 'car': 0.176, 'MaaS_Bundle': 0.493},
-    'middle': {'bike': 0.185, 'car': 0.199, 'MaaS_Bundle': 0.383},
-    'high': {'bike': 0.201, 'car': 0.051, 'MaaS_Bundle': 0.297}
+    'low': {'bike': 0.2, 'car': 0.3, 'MaaS_Bundle': 0.3, 'public': 0.2},  # Add public
+    'middle': {'bike': 0.15, 'car': 0.15, 'MaaS_Bundle': 0.3, 'public': 0.40},  # Add public
+    'high': {'bike': 0.30, 'car': 0.15, 'MaaS_Bundle': 0.2, 'public': 0.35}  # Add public
 }
+PBS_SUBSIDY_DEFAULTS = 100000
 
 # PBS subsidy ranges
 PBS_SUBSIDY_RANGES = {
     'low': {
-        'bike': (0.2, 0.4),
-        'car': (0.15, 0.25),
-        'MaaS_Bundle': (0.3, 0.6)
+        'bike': (0.1, 0.45),
+        'car': (0.1, 0.5),
+        'MaaS_Bundle': (0.3, 0.6),
+        'public': (0.2, 0.6)  # Add this line
     },
     'middle': {
-        'bike': (0.15, 0.35),
-        'car': (0.10, 0.20),
-        'MaaS_Bundle': (0.25, 0.5)
+        'bike': (0.15, 0.55),
+        'car': (0.10, 0.4),
+        'MaaS_Bundle': (0.2, 0.7),
+        'public': (0.1, 0.4)  # Add this line
     },
     'high': {
-        'bike': (0.10, 0.30),
-        'car': (0.05, 0.15),
-        'MaaS_Bundle': (0.20, 0.4)
+        'bike': (0.2, 0.6),
+        'car': (0.05, 0.25),
+        'MaaS_Bundle': (0.1, 0.5),
+        'public': (0.05, 0.4)  # Add this line
     }
 }
 
