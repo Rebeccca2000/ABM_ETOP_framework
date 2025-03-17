@@ -19,7 +19,7 @@ import time
 import random
 
 # Constants
-SIMULATION_STEPS = 25  # Reduced for faster runs during optimization
+SIMULATION_STEPS = 120  # Reduced for faster runs during optimization
 NUM_CPUS = 15  # Adjust based on your system
 
 def calculate_travel_time_equity(session, schema=None):
