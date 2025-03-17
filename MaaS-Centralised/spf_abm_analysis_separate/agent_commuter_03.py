@@ -186,22 +186,31 @@ class Commuter(Agent):
             except KeyError as e:
                 print(f"KeyError: {e}")
 
-        # Calculate the probability of each mode
-        sum_exp_utilities = sum(np.exp(utility) for utility in utilities.values())
-        
-        probabilities = {mode: np.exp(utility) / sum_exp_utilities for mode, utility in utilities.items()}
-        
-        # Prepare the output list including subsidy amounts
-        probability_for_options = []
-        for mode, probability in probabilities.items():
-            route = travel_options[mode]['route']
-            time = travel_options[mode]['time']
-            subsidy = subsidies[mode]  # Retrieve the saved subsidy for the mode
+        # Find maximum utility for numerical stability
+        if utilities:
+            max_utility = max(utilities.values())
             
-            # Include subsidy in the output
-            probability_for_options.append((probability, mode, route, time, subsidy))
+            # Normalize utilities by subtracting max value (prevents overflow)
+            normalized_utilities = {mode: utility - max_utility for mode, utility in utilities.items()}
+            
+            # Calculate the sum of exp(normalized_utilities)
+            sum_exp_utilities = sum(np.exp(utility) for utility in normalized_utilities.values())
+            
+            # Calculate probabilities using normalized utilities
+            probabilities = {mode: np.exp(utility) / sum_exp_utilities 
+                            for mode, utility in normalized_utilities.items()}
+            
+            # Prepare the output list
+            probability_for_options = []
+            for mode, probability in probabilities.items():
+                route = travel_options[mode]['route']
+                time = travel_options[mode]['time']
+                subsidy = subsidies[mode]
+                probability_for_options.append((probability, mode, route, time, subsidy))
+            
+            return probability_for_options
         
-        return probability_for_options
+        return []  # Return empty list if no utilities
 
         
     def calculate_penalty(self, gc, mode=''):
@@ -255,17 +264,17 @@ class Commuter(Agent):
         if self.income_level == 'high':
             # High income: Less price sensitive, more time sensitive
             beta_C = base_coefficients['beta_C'] * 0.9  # Reduce price sensitivity
-            beta_T = base_coefficients['beta_T'] * 1.15  # Increase time sensitivity
+            beta_T = base_coefficients['beta_T'] * 1.2 # Increase time sensitivity
             # comfort_multiplier = 1.5  # Higher value for comfort
         elif self.income_level == 'middle':
             # Middle income: Moderate sensitivity to both
-            beta_C = base_coefficients['beta_C'] * 0.95
-            beta_T = base_coefficients['beta_T'] * 1.05
+            beta_C = base_coefficients['beta_C'] * 1
+            beta_T = base_coefficients['beta_T'] * 1
             # comfort_multiplier = 1.25
         else:  # low income
             # Low income: More price sensitive, less time sensitive
-            beta_C = base_coefficients['beta_C'] * 1.15  # Increase price sensitivity
-            beta_T = base_coefficients['beta_T'] * 0.95 # Reduce time sensitivity
+            beta_C = base_coefficients['beta_C'] * 1.5  # Increase price sensitivity
+            beta_T = base_coefficients['beta_T'] * 0.85 # Reduce time sensitivity
             # comfort_multiplier = 1.0
 
         # Get mode-specific ASC and apply income-specific adjustments
@@ -693,8 +702,6 @@ class Commuter(Agent):
                     if self.location == request['destination']:
                         request['status'] = 'finished'
                         #print(f"[INFO] Commuter {self.unique_id} request {request_id} completed")
-                    else:
-                        print(f"[DEBUG] Commuter {self.unique_id} en route to destination")
-                        
+     
         except Exception as e:
             print(f"[ERROR] Error checking travel status: {e}")

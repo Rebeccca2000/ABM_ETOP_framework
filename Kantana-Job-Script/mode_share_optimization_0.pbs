@@ -1,0 +1,48 @@
+#!/bin/bash
+#PBS -N mode_share_optimization
+#PBS -l select=1:ncpus=16:mem=24gb
+#PBS -l walltime=11:00:00
+#PBS -j oe
+#PBS -m ae
+#PBS -M z5247491@unsw.edu.au
+# Explanation:
+# Job name: mode_share_optimization
+# Resources requested: 1 node with 32 CPUs and 64GB memory
+# Time limit: 12 hours
+# Combine stdout and stderr into one file
+# Email notifications on abort or end
+# How to submit this job:
+# cd ~/MaaS-Simulation/MaaS-Centralised
+# qsub ../Kantana-Job-Script/mode_share_optimization.pbs
+# This is how you can check status:
+# qstat -u z5247491
+
+# Change to the job's working directory
+cd $PBS_O_WORKDIR
+
+# Load required modules
+module load python/3.11.3
+module load postgresql/14.0
+
+# Make sure psycopg2-binary is installed
+pip install --user psycopg2-binary
+
+# Start PostgreSQL server (if not already running)
+# Check if PostgreSQL is running on port 15432
+if ! pg_isready -h localhost -p 15432 > /dev/null 2>&1; then
+    echo "Starting PostgreSQL server on port 15432..."
+    # Start PostgreSQL if not running
+    pg_ctl -D ~/postgres_data -o "-p 15432" start -l ~/pg_start.log
+    # Wait for PostgreSQL to start
+    sleep 5
+fi
+
+# Set PostgreSQL environment variables
+export PGPORT=15432
+export PGHOST=localhost
+export PGDATABASE=simulation_db
+
+# Execute the Python script
+python ./spf_abm_analysis_separate/mode_share_optimization.py
+# Stop PostgreSQL when done
+pg_ctl -D ~/postgres_data stop -m fast

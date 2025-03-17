@@ -1,0 +1,58 @@
+#!/bin/bash
+#PBS -N mode_share_opt_2
+#PBS -l select=1:ncpus=15:mem=32gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -m ae
+#PBS -M z5247491@unsw.edu.au
+
+cd $PBS_O_WORKDIR
+# How to submit this job:
+# cd ~/MaaS-Simulation/MaaS-Centralised
+# qsub ../Kantana-Job-Script/mode_share_optimization_2.pbs
+module load python/3.11.3
+module load postgresql/14.0
+
+pip install --user psycopg2-binary
+
+# Use port 15433 for second simulation
+export PGPORT=15433
+export PGDATA=~/postgres_data_15433
+export PGHOST=localhost
+export PGDATABASE=postgres
+
+# Use a more specific command that only removes if the path is exactly what you expect:
+if [ "$PGDATA" = "$HOME/postgres_data_15433" ]; then
+    rm -rf $PGDATA
+else
+    echo "Unexpected PGDATA path: $PGDATA - skipping removal for safety"
+    exit 1
+fi
+
+# Initialize PostgreSQL
+mkdir -p $PGDATA
+initdb -D $PGDATA
+
+# Configure PostgreSQL
+cat > $PGDATA/postgresql.conf << EOF
+listen_addresses = 'localhost'
+port = 15433
+max_connections = 450
+shared_buffers = 1GB
+work_mem = 64MB
+maintenance_work_mem = 256MB
+dynamic_shared_memory_type = posix
+EOF
+
+# Start PostgreSQL
+pg_ctl -D $PGDATA -o "-p 15433" start -l ~/pg_start_15433.log
+sleep 5
+
+# Run simulation
+python ./spf_abm_analysis_separate/mode_share_optimization.py
+EXIT_CODE=$?
+
+# Stop PostgreSQL
+pg_ctl -D $PGDATA stop -m fast
+
+exit $EXIT_CODE

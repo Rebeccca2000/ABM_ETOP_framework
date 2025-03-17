@@ -1,0 +1,49 @@
+#!/bin/bash
+#PBS -N mae_sim_array
+#PBS -l select=1:ncpus=16:mem=124gb
+#PBS -l walltime=11:00:00
+#PBS -j oe
+#PBS -M z5247491@unsw.edu.au
+#PBS -m ae
+
+# Change to the job's working directory
+cd $PBS_O_WORKDIR
+# How to submit this job:
+# cd ~/MaaS-Simulation/MaaS-Centralised
+# qsub -J 1-2 ../Kantana-Job-Script/mae_sim_array.pbs
+# This is how you can check status:
+# qstat -u z5247491
+
+# Load required modules
+module load python/3.11.3
+module load postgresql/14.0
+
+# Make sure psycopg2-binary is installed
+pip install --user psycopg2-binary
+
+# Create a unique port for each array job to avoid conflicts
+PORT=$((15432 + $PBS_ARRAY_INDEX))
+
+# Start PostgreSQL server on unique port
+echo "Starting PostgreSQL server on port $PORT..."
+if ! pg_isready -h localhost -p $PORT > /dev/null 2>&1; then
+    # Create a separate data directory for each job
+    mkdir -p ~/postgres_data_$PBS_ARRAY_INDEX
+    initdb -D ~/postgres_data_$PBS_ARRAY_INDEX
+    pg_ctl -D ~/postgres_data_$PBS_ARRAY_INDEX -o "-p $PORT" start
+    sleep 5
+fi
+
+# Set PostgreSQL environment variables
+export PGPORT=$PORT
+export PGHOST=localhost
+export PGDATABASE=simulation_db
+
+# Calculate seed offset based on array index
+SEED_OFFSET=$((100 * $PBS_ARRAY_INDEX))
+
+# Execute the Python script with the run ID and seed offset
+python ./spf_abm_analysis_separate/mode_share_optimization.py --run_id $PBS_ARRAY_INDEX --seed_offset $SEED_OFFSET
+
+# Clean up the PostgreSQL server
+pg_ctl -D ~/postgres_data_$PBS_ARRAY_INDEX stop

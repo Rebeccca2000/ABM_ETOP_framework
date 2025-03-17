@@ -12,11 +12,18 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from agent_service_provider_initialisation_03 import reset_database
 import uuid
 import random
+import math
 import database_01
+from sqlalchemy import create_engine, func, text
+from sqlalchemy.orm import sessionmaker
+import time
+import os
+import gc
+import traceback
 from database_01 import num_commuters, grid_width, grid_height, income_weights, \
         health_weights, payment_weights, age_distribution, disability_weights, \
         tech_access_weights,DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS, DB_CONNECTION_STRING, \
-        SIMULATION_STEPS, CHANCE_FOR_INSERTING_RANDOM_TRAFFIC, \
+        SIMULATION_STEPS, \
         CONGESTION_ALPHA,CONGESTION_BETA, CONGESTION_CAPACITY, CONGESTION_T_IJ_FREE_FLOW, \
         ASC_VALUES, UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS, \
         UTILITY_FUNCTION_BASE_COEFFICIENTS, PENALTY_COEFFICIENTS, \
@@ -43,7 +50,6 @@ class MobilityModel(Model):
     def __init__(self, db_connection_string, num_commuters, grid_width, grid_height, data_income_weights , \
                  data_health_weights, data_payment_weights, data_age_distribution,\
                 data_disability_weights, data_tech_access_weights, \
-                CHANCE_FOR_INSERTING_RANDOM_TRAFFIC,\
                 ASC_VALUES, UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS, \
                 UTILITY_FUNCTION_BASE_COEFFICIENTS, PENALTY_COEFFICIENTS, \
                 AFFORDABILITY_THRESHOLDS, FLEXIBILITY_ADJUSTMENTS, VALUE_OF_TIME,\
@@ -55,8 +61,15 @@ class MobilityModel(Model):
                 uber_like2_capacity, uber_like2_price, 
                 bike_share1_capacity, bike_share1_price, 
                 bike_share2_capacity, bike_share2_price, 
-                subsidy_dataset,subsidy_config):
+                subsidy_dataset,subsidy_config,schema=None):
         self.db_engine = create_engine(db_connection_string)
+        self.schema = schema
+        
+        # If schema is provided, set it in the session
+        if self.schema:
+            self.engine = create_engine(db_connection_string)
+            with self.engine.connect() as connection:
+                connection.execute(text(f"SET search_path TO {self.schema}"))
         self.Session = scoped_session(sessionmaker(bind=self.db_engine))
         self.session = self.Session()
         # Step 1: Reset the database with dynamic parameters
@@ -64,7 +77,7 @@ class MobilityModel(Model):
                        uber_like1_capacity, uber_like1_price, 
                        uber_like2_capacity, uber_like2_price, 
                        bike_share1_capacity, bike_share1_price, 
-                       bike_share2_capacity, bike_share2_price)
+                       bike_share2_capacity, bike_share2_price, self.schema)
         
         super().__init__()
         self.db_connection_string = db_connection_string
@@ -82,7 +95,6 @@ class MobilityModel(Model):
         self.data_age_distribution = data_age_distribution
         self.data_disability_weights = data_disability_weights
         self.data_tech_access_weights = data_tech_access_weights
-        self.chance_for_inserting_random_traffic = CHANCE_FOR_INSERTING_RANDOM_TRAFFIC
         self.subsidy_config = subsidy_config
         ##################################################################################
         ################# Initialisation for the commuter agent###########################
@@ -99,10 +111,10 @@ class MobilityModel(Model):
         ###################################################################################
         self.alpha_values = ALPHA_VALUES
         self.public_price_table = public_price_table
-        self.service_provider_agent = ServiceProvider(unique_id=1, model=self, \
+        self.service_provider_agent = ServiceProvider(unique_id='service_provider_1', model=self, \
                                                       db_connection_string=db_connection_string,\
                                                     ALPHA_VALUES = self.alpha_values, \
-                                                    public_price_table=self.public_price_table)
+                                                    public_price_table=self.public_price_table,schema=self.schema)
         self.schedule.add(self.service_provider_agent)
         # #######################################################################################
         # Initialize current_step to 0
@@ -180,7 +192,7 @@ class MobilityModel(Model):
         self.conjestion_t_ij_free_flow = CONGESTION_T_IJ_FREE_FLOW
         self.dynamic_maas_surcharge_base_coefficient = DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS
         self.background_traffic_amount = BACKGROUND_TRAFFIC_AMOUNT
-        self.maas_agent = MaaS(unique_id=self.num_commuters + 2, model=self, \
+        self.maas_agent = MaaS(unique_id="maas_1", model=self, \
                                service_provider_agent=self.service_provider_agent, \
                                 commuter_agents=self.commuter_agents,\
                                 DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS = self.dynamic_maas_surcharge_base_coefficient , \
@@ -192,7 +204,7 @@ class MobilityModel(Model):
                                 CONGESTION_BETA= self.congestion_beta, \
                                 CONGESTION_CAPACITY = self.congestion_capacity, \
                                 CONGESTION_T_IJ_FREE_FLOW = self.conjestion_t_ij_free_flow,\
-                                subsidy_config = self.subsidy_config)
+                                subsidy_config = self.subsidy_config,schema=self.schema)
         self.schedule.add(self.maas_agent)
         
         
@@ -264,87 +276,328 @@ class MobilityModel(Model):
             return True
         return False
 
-    # def should_create_trip(self, commuter):
-    #     # Check the number of trips created in the current day (144 steps)
-    #     trips_in_current_day = sum(1 for request in commuter.requests.values() if request['start_time'] // 144 == self.current_step // 144)
-    #     if commuter.payment_scheme == 'PAYG':
-    #         return trips_in_current_day <= 2
-    #     elif commuter.payment_scheme == 'subscription':
-    #         return trips_in_current_day <= 6
-    #     return False
-
-
-    def should_create_trip(self, commuter, current_ticks):
-        trips_in_current_day = sum(1 for request in commuter.requests.values() if request['start_time'] // 144 == self.current_step // 144)
-
-        # Determine the current peak period
-        if 36 <= current_ticks % 144 < 60:
-            peak_period = 'morning_peak'
-        elif 90 <= current_ticks % 144 < 114:
-            peak_period = 'evening_peak'
+    def should_create_trip(self, commuter, current_step):
+        """
+        Determines if a commuter should create a new trip based on their travel history,
+        time of day, demographics, and payment scheme.
+        
+        Returns:
+            bool: True if a new trip should be created, False otherwise
+        """
+        # Get time context
+        ticks_in_day = 144
+        current_day_tick = current_step % ticks_in_day
+        current_day = current_step // ticks_in_day
+        day_of_week = current_day % 7  # 0-4 weekday, 5-6 weekend
+        is_weekend = day_of_week >= 5
+        
+        # Count trips in the current day
+        trips_in_current_day = sum(1 for request in commuter.requests.values() 
+                                if request['start_time'] // ticks_in_day == current_day)
+        
+        # Determine the current time period
+        if 36 <= current_day_tick < 60:  # 6:30am-10am
+            time_period = 'morning_peak'
+        elif 60 <= current_day_tick < 90:  # 10am-3pm
+            time_period = 'midday'
+        elif 90 <= current_day_tick < 114:  # 3pm-7pm
+            time_period = 'evening_peak'
+        elif 114 <= current_day_tick < 126:  # 7pm-9pm
+            time_period = 'evening'
+        else:  # Overnight
+            time_period = 'night'
+        
+        # Count trips in the current time period (same day)
+        if time_period == 'morning_peak':
+            trips_in_period = sum(1 for request in commuter.requests.values() 
+                                if request['start_time'] // ticks_in_day == current_day 
+                                and 36 <= request['start_time'] % ticks_in_day < 60)
+        elif time_period == 'evening_peak':
+            trips_in_period = sum(1 for request in commuter.requests.values() 
+                                if request['start_time'] // ticks_in_day == current_day 
+                                and 90 <= request['start_time'] % ticks_in_day < 114)
         else:
-            peak_period = 'off_peak'
-
-        # Count trips in the current peak period within the same day
-        if peak_period == 'morning_peak':
-            trips_in_peak = sum(1 for request in commuter.requests.values() if request['start_time'] // 144 == self.current_step // 144 and 36 <= request['start_time'] % 144 < 60)
-        elif peak_period == 'evening_peak':
-            trips_in_peak = sum(1 for request in commuter.requests.values() if request['start_time'] // 144 == self.current_step // 144 and 90 <= request['start_time'] % 144 < 114)
-        else:
-            trips_in_peak = 0  # No specific counting for off-peak
-
-        # Adjust trip limits during peaks and off-peak
-        if peak_period in ['morning_peak', 'evening_peak']:
-            if commuter.payment_scheme == 'PAYG':
-                # Ensure at least one trip is available for evening peak
-                if peak_period == 'morning_peak':
-                    return trips_in_peak < 3 and trips_in_current_day < 6
-                else:
-                    return trips_in_peak < 3 and trips_in_current_day < 6
-            elif commuter.payment_scheme == 'subscription':
-                # Ensure multiple trips can be made throughout the day
-                if peak_period == 'morning_peak':
-                    return trips_in_peak < 3 and trips_in_current_day < 6
-                else:
-                    return trips_in_peak < 3 and trips_in_current_day < 6
-        else:
-            # Allow trips during off-peak if the daily limit has not been reached
-            if commuter.payment_scheme == 'PAYG':
-                return trips_in_current_day < 6
-            elif commuter.payment_scheme == 'subscription':
-                return trips_in_current_day < 6
-
-        return False
-
-
+            # For other periods, just check within a 24-tick window (4 hours)
+            period_start = max(0, current_day_tick - 12)
+            period_end = min(ticks_in_day - 1, current_day_tick + 12)
+            trips_in_period = sum(1 for request in commuter.requests.values() 
+                                if request['start_time'] // ticks_in_day == current_day 
+                                and period_start <= request['start_time'] % ticks_in_day < period_end)
+        
+        # Base daily limits depending on payment scheme and demographics
+        if commuter.payment_scheme == 'subscription':
+            base_daily_limit = 8  # Subscription users make more trips
+        else:  # PAYG
+            base_daily_limit = 6
+        
+        # Demographic adjustments
+        if commuter.income_level == 'high':
+            base_daily_limit += 2  # High income makes more trips
+        elif commuter.income_level == 'low':
+            base_daily_limit -= 1  # Low income makes fewer trips
+        
+        if commuter.age >= 65 or commuter.has_disability:
+            base_daily_limit -= 1  # Older/disabled people may make fewer trips
+        
+        # Weekend adjustments
+        if is_weekend:
+            # Fewer trips on weekends, especially for work commuters
+            base_daily_limit = max(3, base_daily_limit - 2)
+        
+        # Determine max trips per time period
+        if time_period == 'morning_peak' or time_period == 'evening_peak':
+            # During peak, allow more trips for commuters with subscription
+            if commuter.payment_scheme == 'subscription':
+                period_limit = 3
+            else:
+                period_limit = 2
+        elif time_period == 'midday':
+            # Some commuters may do multiple midday trips (lunch, meetings)
+            period_limit = 2
+        elif time_period == 'evening':
+            # Evening activities
+            period_limit = 2
+        else:  # night
+            # Fewer trips at night
+            period_limit = 1
+        
+        # Check if commuter is already traveling (has active non-finished trips)
+        has_active_travel = any(request['status'] not in ['finished', 'expired'] 
+                            for request in commuter.requests.values())
+        if has_active_travel:
+            return False  # Can't start a new trip while already traveling
+        
+        # Special case: If commuter hasn't made any trips yet today, 
+        # always allow at least one trip
+        if trips_in_current_day == 0:
+            # But consider time of day - most people start their day in morning
+            if time_period == 'morning_peak' or (is_weekend and time_period == 'midday'):
+                return True
+            elif time_period == 'night':
+                # Very few trips start during night
+                return random.random() < 0.1
+            else:
+                # Some probability of starting first trip later in the day
+                return random.random() < 0.4
+        
+        # Check against limits
+        return (trips_in_current_day < base_daily_limit and 
+                trips_in_period < period_limit)
 
     def all_requests_finished(self, commuter):
-        return all(request['status'] == 'finished' for request in commuter.requests.values())
+        return all(request['status'] in ['finished', 'expired'] for request in commuter.requests.values())
 
-    def create_new_request(self, current_step, commuter):
+    def create_time_based_trip(self, current_step, commuter):
+        """Create trip requests with realistic timing patterns based on time of day and commuter attributes"""
+        
+        # Only create new trips if commuter isn't already traveling
         if not commuter.requests or self.all_requests_finished(commuter):
-            if not self.should_create_trip(commuter, self.current_step):
-                return  # Do not create a new request if the commuter has reached their daily trip limit
-
-            # Check current peak period to adjust trip creation probability
-            if 36 <= self.current_step % 144 < 60:
-                create_trip_probability = 0.2  # Morning peak
-            elif 90 <= self.current_step % 144 < 114:
-                create_trip_probability = 0.2  # Evening peak
-            else:
-                create_trip_probability = 0.05  # Off-peak
-
-            if random.random() < create_trip_probability:
-                request_id = uuid.uuid4()
-                origin = commuter.location
-                destination = (random.randint(0, self.grid.width - 1), random.randint(0, self.grid.height - 1))
-                start_time = current_step + random.randint(0, 5)
-                travel_purpose = random.choice(['work', 'school', 'shopping', 'leisure', 'medical'])
-                commuter.create_request(request_id, origin, destination, start_time, travel_purpose)
-                # print(f"Commuter {commuter.unique_id} created request from {origin} to {destination} starting at {start_time}")
-                return True
-            else:
+            # Skip if daily trip limit reached
+            if not self.should_create_trip(commuter, current_step):
                 return False
+                
+            # Get time of day context (144 ticks = 1 day, tick 0 = midnight)
+            ticks_in_day = 144
+            current_day_tick = current_step % ticks_in_day
+            current_day = current_step // ticks_in_day
+            day_of_week = current_day % 7  # 0-4 weekday, 5-6 weekend
+            is_weekend = day_of_week >= 5
+            
+            # Baseline probabilities influenced by demographics
+            base_probability = 0.05
+            
+            # Income level adjustments (higher income = more trips)
+            if commuter.income_level == 'high':
+                base_probability *= 1.5
+            elif commuter.income_level == 'low':
+                base_probability *= 0.8
+                
+            # Age/disability adjustments
+            if commuter.age >= 65 or commuter.has_disability:
+                base_probability *= 0.7
+                
+            # PAYG vs Subscription adjustments
+            if commuter.payment_scheme == 'subscription':
+                base_probability *= 1.3
+                
+            # Time of day probability distribution (using normal curves around peak times)
+            time_multiplier = 1.0
+            
+            # Morning peak (centered at 8am = tick 48)
+            if not is_weekend:
+                morning_peak_center = 48
+                morning_intensity = math.exp(-0.5 * ((current_day_tick - morning_peak_center) / 8) ** 2)
+                
+                # Evening peak (centered at 5:30pm = tick 105)
+                evening_peak_center = 105
+                evening_intensity = math.exp(-0.5 * ((current_day_tick - evening_peak_center) / 10) ** 2)
+                
+                # Combine the peaks
+                time_multiplier = max(morning_intensity * 3.0, evening_intensity * 2.5, 0.2)
+            else:
+                # Weekend pattern (midday peak)
+                midday_peak_center = 72  # Noon
+                midday_intensity = math.exp(-0.5 * ((current_day_tick - midday_peak_center) / 16) ** 2)
+                time_multiplier = midday_intensity * 1.5
+            
+            # Final probability
+            trip_probability = base_probability * time_multiplier
+            
+            # Decide whether to create a trip
+            if random.random() < trip_probability:
+                # Determine trip purpose based on time of day
+                if not is_weekend and current_day_tick < 60:  # Morning on weekday
+                    purpose_weights = {'work': 0.7, 'school': 0.2, 'shopping': 0.05, 'medical': 0.03, 'leisure': 0.02}
+                elif not is_weekend and current_day_tick >= 90 and current_day_tick < 114:  # Evening on weekday
+                    purpose_weights = {'work': 0.1, 'school': 0.05, 'shopping': 0.3, 'leisure': 0.5, 'medical': 0.05}
+                elif is_weekend:  # Weekend
+                    purpose_weights = {'shopping': 0.4, 'leisure': 0.4, 'medical': 0.05, 'work': 0.1, 'school': 0.05}
+                else:  # Middle of weekday
+                    purpose_weights = {'work': 0.2, 'school': 0.1, 'shopping': 0.3, 'medical': 0.2, 'leisure': 0.2}
+                
+                # Select purpose based on weights
+                purposes = list(purpose_weights.keys())
+                weights = list(purpose_weights.values())
+                travel_purpose = random.choices(purposes, weights=weights)[0]
+                
+                # Generate destination based on purpose
+                origin = commuter.location
+                destination = self.get_purpose_based_destination(travel_purpose, origin, commuter)
+                
+                # Set trip timing - more realistic start time distribution
+                # Most people don't plan trips exactly at current time - add a buffer
+                min_delay = 1
+                max_delay = 5
+                
+                if travel_purpose in ['work', 'school'] and current_day_tick < 30:
+                    # Early morning work/school trips might be planned further ahead
+                    max_delay = 4
+                    
+                start_time = current_step + min_delay + random.randint(0, max_delay)
+                
+                # Double-check that the start_time is valid before creating the request
+                if start_time > current_step + 5:
+                    # If somehow we ended up with a time too far ahead, adjust it
+                    start_time = current_step + 5
+                # Create the request
+                request_id = uuid.uuid4()
+                commuter.create_request(request_id, origin, destination, start_time, travel_purpose)
+                return True
+            
+            return False
+
+    def get_purpose_based_destination(self, purpose, origin, commuter):
+        """Generate a realistic destination based on trip purpose"""
+        
+        # Avoid very short trips
+        min_distance = 5
+        
+        if purpose == 'work' or purpose == 'school':
+            # Work trips tend to be to specific locations - can be far away from home
+            # Higher income might have longer commutes to specialized jobs
+            if commuter.income_level == 'high':
+                distance_factor = 0.7  # Can travel farther
+            else:
+                distance_factor = 0.5
+                
+            # Get a destination with preference toward business/office districts
+            # For simplicity, let's say central areas (middle of grid) are business districts
+            grid_center_x = self.grid_width // 2
+            grid_center_y = self.grid_height // 2
+            
+            # Generate with bias toward center
+            while True:
+                # Biased random point toward center
+                x_offset = random.normalvariate(0, self.grid_width * distance_factor)
+                y_offset = random.normalvariate(0, self.grid_height * distance_factor)
+                
+                dest_x = min(max(0, int(grid_center_x + x_offset)), self.grid_width - 1)
+                dest_y = min(max(0, int(grid_center_y + y_offset)), self.grid_height - 1)
+                destination = (dest_x, dest_y)
+                
+                # Check if it's far enough away
+                distance = math.sqrt((destination[0] - origin[0])**2 + (destination[1] - origin[1])**2)
+                if distance >= min_distance:
+                    break
+            
+            return destination
+            
+        elif purpose == 'shopping':
+            # Shopping destinations are often in specific areas like malls or centers
+            # Let's say there are a few shopping centers scattered around
+            
+            # Simple approach - just use a few preset locations
+            shopping_centers = [
+                (self.grid_width // 4, self.grid_height // 4),
+                (self.grid_width // 4, 3 * self.grid_height // 4),
+                (3 * self.grid_width // 4, self.grid_height // 4),
+                (3 * self.grid_width // 4, 3 * self.grid_height // 4),
+                (self.grid_width // 2, self.grid_height // 2)
+            ]
+            
+            # Find closest and furthest shopping centers
+            distances = [math.sqrt((center[0] - origin[0])**2 + (center[1] - origin[1])**2) 
+                        for center in shopping_centers]
+            centers_by_distance = [center for _, center in sorted(zip(distances, shopping_centers))]
+            
+            # People typically go to reasonably close shopping centers, not always the very closest
+            # nor the furthest
+            if len(centers_by_distance) >= 3:
+                # Skip the very closest and furthest
+                choice_centers = centers_by_distance[1:-1]
+                return random.choice(choice_centers)
+            else:
+                return random.choice(shopping_centers)
+        
+        elif purpose == 'leisure':
+            # Leisure trips can be to parks, entertainment venues
+            # For simplicity, let's say there are some leisure areas in the outer regions
+            
+            # Generate a point biased toward edges
+            while True:
+                if random.random() < 0.5:
+                    # Bias toward edges on x-axis
+                    x = random.choice([random.randint(0, self.grid_width // 4),
+                                    random.randint(3 * self.grid_width // 4, self.grid_width - 1)])
+                    y = random.randint(0, self.grid_height - 1)
+                else:
+                    # Bias toward edges on y-axis
+                    y = random.choice([random.randint(0, self.grid_height // 4),
+                                    random.randint(3 * self.grid_height // 4, self.grid_height - 1)])
+                    x = random.randint(0, self.grid_width - 1)
+                    
+                destination = (x, y)
+                
+                # Check if it's far enough away
+                distance = math.sqrt((destination[0] - origin[0])**2 + (destination[1] - origin[1])**2)
+                if distance >= min_distance:
+                    break
+                    
+            return destination
+            
+        elif purpose == 'medical':
+            # Medical destinations like hospitals are specific and few
+            # Let's define a few hospitals
+            hospitals = [
+                (self.grid_width // 2, self.grid_height // 4),
+                (self.grid_width // 4, self.grid_height // 2),
+                (3 * self.grid_width // 4, self.grid_height // 2)
+            ]
+            return random.choice(hospitals)
+        
+        else:
+            # Fallback - completely random
+            while True:
+                x = random.randint(0, self.grid_width - 1)
+                y = random.randint(0, self.grid_height - 1)
+                destination = (x, y)
+                
+                # Check if it's far enough away
+                distance = math.sqrt((destination[0] - origin[0])**2 + (destination[1] - origin[1])**2)
+                if distance >= min_distance:
+                    break
+                    
+            return destination
             
     def get_current_step(self):
         return self.current_step
@@ -360,37 +613,44 @@ class MobilityModel(Model):
         for commuter in self.commuter_agents:
             # Create new request based on commuter's needs
             #print(f"Creating new request for Commuter {commuter.unique_id} at Step {self.current_step}")
-            self.create_new_request(self.current_step, commuter)
-            self.update_commuter_info_log(commuter)
+            self.create_time_based_trip(self.current_step, commuter)
+            
+            # First, clean up stale requests
+            for request_id, request in list(commuter.requests.items()):
+                if request['status'] == 'active' and request['start_time'] < self.current_step:
+                    # This request is stale - mark it as expired rather than trying to process it
+                    request['status'] = 'expired'
+                    print(f"Marking stale request {request_id} as expired (start_time: {request['start_time']}, current_step: {self.current_step})")
+            
+            # Now process valid active requests
             for request_id, request in list(commuter.requests.items()):
                 try:
-                    if request['status'] == 'active':
+                    if request['status'] == 'active' and request['start_time'] >= self.current_step:
                         # MaaS agent generates travel options for each request
+                        travel_options_without_MaaS = self.maas_agent.options_without_maas(
+                            request_id, request['start_time'], request['origin'], request['destination'])
                         
-                        travel_options_without_MaaS = self.maas_agent.options_without_maas(request_id, request['start_time'], request['origin'], request['destination'])
-                        # print(f"Generated travel options for request {request_id}: \nWithout MaaS: {travel_options_without_MaaS}")
+                        travel_options_with_MaaS = self.maas_agent.maas_options(
+                            commuter.payment_scheme, request_id, request['start_time'], 
+                            request['origin'], request['destination'])
 
-                        travel_options_with_MaaS = self.maas_agent.maas_options(commuter.payment_scheme, request_id, request['start_time'], request['origin'], request['destination'])
-
-                        # print(f"Generated travel options for request {request_id}: \nWith MaaS: {travel_options_with_MaaS}")
-
-                        # Commuter ranks the travel options
-                        ranked_options = commuter.rank_service_options(travel_options_without_MaaS, travel_options_with_MaaS, request_id)
-                        # print(f"Ranked options for request {request_id}: {ranked_options}")
-
-                        if ranked_options != []:  # Only attempt booking if there are ranked options available
-                            # print(f"Attempting to book service for request {request_id}")
-                            # MaaS agent attempts to book the highest-ranked service using ranked_options
-                            booking_success, availability_dict = self.maas_agent.book_service(request_id, ranked_options, self.current_step, availability_dict)
-                            if booking_success:
-                                print(f"Booking for request {request_id} was successful.")
-                            else:
+                        # Process the rest as before...
+                        ranked_options = commuter.rank_service_options(
+                            travel_options_without_MaaS, travel_options_with_MaaS, request_id)
+                        
+                        if ranked_options:
+                            booking_success, availability_dict = self.maas_agent.book_service(
+                                request_id, ranked_options, self.current_step, availability_dict)
+                            if not booking_success:
                                 print(f"Booking for request {request_id} was not successful.")
                         else:
                             print(f"No viable options for request {request_id}.")
                 except Exception as e:
-                    print(f"Error in MobilityModel processing request {request_id}: {e}")
-
+                    print(f"Error in MobilityModel processing request {request_id}: {str(e)}")
+                    # Add this to help diagnose the specific request causing problems
+                    print(f"Problem request details: status={request['status']}, start_time={request['start_time']}, current_step={self.current_step}")
+                    
+            self.update_commuter_info_log(commuter)
             commuter.update_location()
             commuter.check_travel_status()  # Once the commuter arrives at the destination, increase the availability back
 
@@ -401,12 +661,11 @@ class MobilityModel(Model):
         #print(f"Calling dynamic pricing update")
         self.service_provider_agent.dynamic_pricing_share()
             # Probability of inserting random traffic
-        random_traffic_probability = self.chance_for_inserting_random_traffic  # 20% chance to insert random traffic
-        if random.random() < random_traffic_probability:
-            with self.Session() as session:
-                print(f"Inserting random background traffic at Step {self.current_step}")
-                # Insert random traffic with a certain number of routes
-                self.maas_agent.insert_random_traffic(session)
+        # Time-varying background traffic - always insert but vary amount by time of day
+        with self.Session() as session:
+            #print(f"Inserting random background traffic at Step {self.current_step}")
+            # Insert random traffic with a certain number of routes
+            num_routes_inserted = self.maas_agent.insert_time_varying_traffic(session)
         self.schedule.step()
 
             
@@ -506,7 +765,6 @@ grid = CanvasGrid(agent_portrayal, database_01.grid_width, database_01.grid_heig
 #             'middle': {'bike': 0.3, 'car': 0.01, 'MaaS_Bundle': 0.5},
 #             'high': {'bike': 0.4, 'car': 0, 'MaaS_Bundle': 0.6}
 #         },
-#     'CHANCE_FOR_INSERTING_RANDOM_TRAFFIC': 0.2,
 #     'ASC_VALUES': {'car': 0, 'bike': 0, 'public': 0, 'walk': 0, 'maas': 0, 'default': 0},
 #     'UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS': {'beta_C': -0.05, 'beta_T': -0.06},
 #     'UTILITY_FUNCTION_BASE_COEFFICIENTS': {'beta_C': -0.05, 'beta_T': -0.06, 'beta_W': -0.01, 'beta_A': -0.01, 'alpha': -0.01},
@@ -557,7 +815,6 @@ if __name__ == "__main__":
         data_age_distribution=age_distribution,
         data_disability_weights=disability_weights,
         data_tech_access_weights=tech_access_weights,
-        CHANCE_FOR_INSERTING_RANDOM_TRAFFIC=CHANCE_FOR_INSERTING_RANDOM_TRAFFIC,
         ASC_VALUES=ASC_VALUES,
         UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS=UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS,
         UTILITY_FUNCTION_BASE_COEFFICIENTS=UTILITY_FUNCTION_BASE_COEFFICIENTS,

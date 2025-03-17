@@ -1,12 +1,12 @@
 from mesa import Agent
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, scoped_session
 from agent_service_provider_initialisation_03 import TransportModes, UberLike1,UberLike2, BikeShare1, BikeShare2, ShareServiceBookingLog, TransportModes
 from sqlalchemy.exc import SQLAlchemyError
 from mesa.time import RandomActivation
 # from database_01 import public_price_table, ALPHA_VALUES
 class ServiceProvider(Agent):
-    def __init__(self, unique_id, model, db_connection_string, public_price_table, ALPHA_VALUES):
+    def __init__(self, unique_id, model, db_connection_string, public_price_table, ALPHA_VALUES, schema=None):
         super().__init__(unique_id, model)
         self.db_engine = create_engine(db_connection_string)
         self.Session = scoped_session(sessionmaker(bind=self.db_engine))
@@ -14,7 +14,7 @@ class ServiceProvider(Agent):
         self.db_connection_string = db_connection_string
         self.alpha_values = ALPHA_VALUES
         self.public_price_table = public_price_table
-
+        self.schema = schema  # Store schema name
     def step(self):
         pass
 
@@ -110,18 +110,18 @@ class ServiceProvider(Agent):
 
     def get_travel_speed(self, mode, current_ticks):
         if mode == 'bus':
-            return 1.8 #step/stop
-        elif mode == 'train': #For 1 station, how many step is needed.
             return 3 #step/stop
+        elif mode == 'train': #For 1 station, how many step is needed.
+            return 5 #step/stop
         elif mode == 'walk': # For 1 unit length, how long do they need - > which means, for 
-            return 0.75 #unit length/step
+            return 0.76 #unit length/step
         elif mode == 'bike':
-            return 2.5 #unit length/step
+            return 1.4 #unit length/step
         elif mode == 'car':
             if self.check_is_peak(current_ticks):
-                return 16
+                return 6.5
             else:
-                return 19
+                return 7.5
         else:
             print(f"Unknown mode: {mode}")
             return 0  # Default speed if mode is unknown
@@ -153,7 +153,7 @@ class ServiceProvider(Agent):
             return None
 
         if start_time < current_step:
-            raise ValueError("get_shared_service_price start_time must be more than the current step")
+            raise ValueError(f"get_shared_service_price start_time ({start_time}) must be at least the current step ({current_step})")
         elif start_time > current_step + 5:
             raise ValueError("start_time must be less than current step + 5 steps")
         
@@ -193,6 +193,10 @@ class ServiceProvider(Agent):
 
     def record_booking_log(self, commuter_id, request_id, company_name, start_time, duration, affected_steps, route_details):
         # Extract the actual company name from the mode string
+        with self.Session() as session:
+            if self.schema:
+                session.execute(text(f"SET search_path TO {self.schema}"))
+                session.commit()
         if '_' in company_name:
             if company_name.split('_')[0] == 'car' or company_name.split('_')[0] == 'bike':
                 # Split 'car_UberLike1_route' and get 'UberLike1'
