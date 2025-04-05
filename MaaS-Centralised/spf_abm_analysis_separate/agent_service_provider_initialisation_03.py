@@ -129,7 +129,8 @@ class ServiceBookingLog(Base):
     total_time = Column(Float, nullable=False)  # New column to store the total time taken for each trip
     origin_coordinates = Column(JSON, nullable=False)  # New column to store origin coordinates
     destination_coordinates = Column(JSON, nullable=False)  # New column to store destination coordinates
-
+    # Add this new status column
+    status = Column(String(50), nullable=False, default='active')
     # New columns for MaaS options
     to_station = Column(JSON, nullable=True)  # Store 'to station' info as JSON, nullable because non-MaaS options won't use it
     to_destination = Column(JSON, nullable=True)  # Store 'to destination' info as JSON, nullable because non-MaaS options won't use it

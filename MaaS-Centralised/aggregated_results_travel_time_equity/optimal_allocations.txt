@@ -1,0 +1,6 @@
+Optimal FPS Value: 3500.0
+Travel Time Equity Index: 0.8372
+
+Optimal Subsidy Allocations:
+
+Travel Time Deviation by Income Level:

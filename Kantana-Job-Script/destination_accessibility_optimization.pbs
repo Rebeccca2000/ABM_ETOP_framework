@@ -1,0 +1,78 @@
+#!/bin/bash
+#PBS -N destination_accessibility
+#PBS -l select=1:ncpus=15:mem=32gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -m ae
+#PBS -M z5247491@unsw.edu.au
+
+# Change to the job's working directory
+cd $PBS_O_WORKDIR
+
+# Load required modules
+module load python/3.11.3
+module load postgresql/14.0
+
+# Make sure required packages are installed
+pip install --user psycopg2-binary
+pip install --user scikit-learn matplotlib pandas seaborn
+
+# Set up main PostgreSQL instance
+export PGDATA=~/postgres_data_15441
+export PGPORT=15441
+export PGHOST=localhost
+export PGDATABASE=postgres
+
+# Initialize PostgreSQL if needed
+if [ ! -d "$PGDATA" ] || [ ! -f "$PGDATA/PG_VERSION" ]; then
+    echo "Initializing PostgreSQL database..."
+    mkdir -p $PGDATA
+    initdb -D $PGDATA
+    
+    # Configure PostgreSQL for better performance
+    cat > $PGDATA/postgresql.conf << EOF
+listen_addresses = 'localhost'
+port = 15441
+max_connections = 450
+shared_buffers = 1GB
+work_mem = 64MB
+maintenance_work_mem = 256MB
+dynamic_shared_memory_type = posix
+EOF
+fi
+
+# Start PostgreSQL and wait for it
+echo "Starting PostgreSQL server..."
+pg_ctl -D $PGDATA -o "-p 15441" start -l ~/pg_start_15441.log
+sleep 5
+
+# Verify PostgreSQL is running
+if pg_isready -h localhost -p 15441; then
+    echo "PostgreSQL is running successfully"
+else
+    echo "PostgreSQL failed to start - check logs"
+    cat ~/pg_start.log
+    exit 1
+fi
+
+
+
+# Execute the Python script
+echo "Starting destination accessibility optimization..."
+python ./spf_abm_analysis_separate/destination_accessibility_optimization.py
+EXIT_CODE=$?
+
+
+# Stop PostgreSQL when done
+echo "Stopping PostgreSQL..."
+pg_ctl -D $PGDATA stop -m fast
+
+# Report success or failure
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "Destination accessibility analysis completed successfully"
+
+else
+    echo "Analysis failed with exit code $EXIT_CODE"
+fi
+
+exit $EXIT_CODE

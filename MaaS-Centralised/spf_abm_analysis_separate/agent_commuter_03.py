@@ -2,6 +2,7 @@ from mesa import Agent
 import math
 import random
 import numpy as np
+from agent_service_provider_initialisation_03 import ServiceBookingLog
 # from database_01 import ASC_VALUES, UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS, UTILITY_FUNCTION_BASE_COEFFICIENTS, PENALTY_COEFFICIENTS, AFFORDABILITY_THRESHOLDS, FLEXIBILITY_ADJUSTMENTS, VALUE_OF_TIME
 class Commuter(Agent):
     def __init__(self, unique_id, model, commuter_location, age, income_level, has_disability,
@@ -353,6 +354,27 @@ class Commuter(Agent):
         else:
             
             return False
+        
+    def update_trip_status_in_database(self, request_id, new_status):
+        """Update the status of a trip in the ServiceBookingLog database."""
+        try:
+            from sqlalchemy.orm import sessionmaker
+            Session = sessionmaker(bind=self.model.db_engine)
+            with Session() as session:
+                booking = session.query(ServiceBookingLog).filter_by(
+                    commuter_id=self.unique_id,
+                    request_id=str(request_id)
+                ).first()
+                
+                if booking:
+                    booking.status = new_status
+                    session.commit()
+                    print(f"Updated status of request {request_id} to {new_status} in database")
+                else:
+                    print(f"Could not find booking for request {request_id} in database")
+                    
+        except Exception as e:
+            print(f"Error updating trip status in database: {e}")
 
     ########################################################################################################
     ############################################## Update Location ############################################
@@ -501,9 +523,16 @@ class Commuter(Agent):
                 total_time_elapsed += time_to_complete
 
         # Journey complete - move to final destination and finish
+        # Journey complete
         if elapsed_time >= total_time_elapsed:
             self.move_and_update_location(request['destination'])
             request['status'] = 'finished'
+            
+            # Extract request_id from the request dictionary
+            request_id = request.get('request_id')
+            
+            # Add this line to update the database
+            self.update_trip_status_in_database(request_id, 'finished')
             self.current_mode = None
    
 
@@ -584,6 +613,12 @@ class Commuter(Agent):
         if elapsed_time >= total_time_elapsed:
             self.move_and_update_location(request['destination'])
             request['status'] = 'finished'
+            
+            # Extract request_id from the request dictionary
+            request_id = request.get('request_id')
+            
+            # Add this line to update the database
+            self.update_trip_status_in_database(request_id, 'finished')
             self.current_mode = None
 
     def move_along_route_single_mode(self, route, travel_speed):
@@ -613,6 +648,10 @@ class Commuter(Agent):
             else:
                 current_position = route[-1]
                 active_requests[0]['status'] = 'finished'
+                # Add this line to update the database
+                request_id = next(iter(active_requests[0].get('request_id', None) for r in active_requests))
+                if request_id:
+                    self.update_trip_status_in_database(request_id, 'finished')
                 self.current_mode = None  # Reset mode
 
             self.move_and_update_location(current_position)
@@ -701,7 +740,7 @@ class Commuter(Agent):
                 if request['status'] == 'Service Selected':
                     if self.location == request['destination']:
                         request['status'] = 'finished'
-                        #print(f"[INFO] Commuter {self.unique_id} request {request_id} completed")
-     
+                        # Update status in database
+                        self.update_trip_status_in_database(request_id, 'finished')
         except Exception as e:
             print(f"[ERROR] Error checking travel status: {e}")

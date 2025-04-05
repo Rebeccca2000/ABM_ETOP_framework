@@ -1,0 +1,21 @@
+digraph Tree {
+node [shape=box, style="filled, rounded", color="black", fontname="helvetica"] ;
+edge [fontname="helvetica"] ;
+0 [label=<Efficiency Priority &le; 0.5<br/>gini = 0.652<br/>samples = 100<br/>value = [35, 41, 24]<br/>class = Total System Travel Time>, fillcolor="#edfdf3"] ;
+1 [label=<Budget Constraint &le; 0.5<br/>gini = 0.25<br/>samples = 41<br/>value = [35, 6, 0]<br/>class = Mode Share Equity>, fillcolor="#e9975b"] ;
+0 -> 1 [labeldistance=2.5, labelangle=45, headlabel="True"] ;
+2 [label=<gini = 0.0<br/>samples = 25<br/>value = [25, 0, 0]<br/>class = Mode Share Equity>, fillcolor="#e58139"] ;
+1 -> 2 ;
+3 [label=<Equity Priority &le; 0.5<br/>gini = 0.469<br/>samples = 16<br/>value = [10, 6, 0]<br/>class = Mode Share Equity>, fillcolor="#f5cdb0"] ;
+1 -> 3 ;
+4 [label=<gini = 0.0<br/>samples = 6<br/>value = [0, 6, 0]<br/>class = Total System Travel Time>, fillcolor="#39e581"] ;
+3 -> 4 ;
+5 [label=<gini = 0.0<br/>samples = 10<br/>value = [10, 0, 0]<br/>class = Mode Share Equity>, fillcolor="#e58139"] ;
+3 -> 5 ;
+6 [label=<Equity Priority &le; 0.5<br/>gini = 0.483<br/>samples = 59<br/>value = [0, 35, 24]<br/>class = Total System Travel Time>, fillcolor="#c1f7d7"] ;
+0 -> 6 [labeldistance=2.5, labelangle=-45, headlabel="False"] ;
+7 [label=<gini = 0.0<br/>samples = 35<br/>value = [0, 35, 0]<br/>class = Total System Travel Time>, fillcolor="#39e581"] ;
+6 -> 7 ;
+8 [label=<gini = 0.0<br/>samples = 24<br/>value = [0, 0, 24]<br/>class = Travel Time Equity>, fillcolor="#8139e5"] ;
+6 -> 8 ;
+}

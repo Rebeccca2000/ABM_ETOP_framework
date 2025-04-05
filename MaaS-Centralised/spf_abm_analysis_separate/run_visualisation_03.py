@@ -621,7 +621,42 @@ class MobilityModel(Model):
                     # This request is stale - mark it as expired rather than trying to process it
                     request['status'] = 'expired'
                     print(f"Marking stale request {request_id} as expired (start_time: {request['start_time']}, current_step: {self.current_step})")
-            
+                    # Add this code to update database
+                    try:
+                        from sqlalchemy.orm import sessionmaker
+                        from agent_service_provider_initialisation_03 import ServiceBookingLog
+                        
+                        Session = sessionmaker(bind=self.db_engine)
+                        with Session() as session:
+                            # Check if this request is already in the database
+                            existing = session.query(ServiceBookingLog).filter_by(
+                                request_id=str(request_id)
+                            ).first()
+                            
+                            if existing:
+                                # Update existing record
+                                existing.status = 'expired'
+                                session.commit()
+                            else:
+                                # For expired requests that never got a booking, create a minimal record
+                                new_record = ServiceBookingLog(
+                                    commuter_id=commuter.unique_id,
+                                    payment_scheme=commuter.payment_scheme,
+                                    request_id=str(request_id),
+                                    start_time=request['start_time'],
+                                    record_company_name='none',  # No company was selected
+                                    route_details={"route": "none"},  # Minimal route info
+                                    total_price=0.0,
+                                    maas_surcharge=0.0,
+                                    total_time=0.0,
+                                    origin_coordinates=request['origin'],
+                                    destination_coordinates=request['destination'],
+                                    status='expired'  # Mark as expired
+                                )
+                                session.add(new_record)
+                                session.commit()
+                    except Exception as e:
+                        print(f"Error updating expired status in database: {e}")
             # Now process valid active requests
             for request_id, request in list(commuter.requests.items()):
                 try:

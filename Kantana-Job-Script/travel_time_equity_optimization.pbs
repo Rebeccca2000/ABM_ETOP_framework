@@ -17,7 +17,7 @@ module load postgresql/14.0
 pip install --user psycopg2-binary
 
 # Set up main PostgreSQL instance
-export PGDATA=~/postgres_data
+export PGDATA=~/postgres_data_15433
 export PGPORT=15433
 export PGHOST=localhost
 export PGDATABASE=postgres

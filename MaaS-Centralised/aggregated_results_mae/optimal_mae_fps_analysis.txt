@@ -1,0 +1,35 @@
+Mode Share Equity Optimization Analysis
+=======================================
+
+Raw Data Optimal FPS: 4000 (Equity Score: 0.3078)
+Elbow Point FPS: 3000 (Equity Score: 0.3253)
+Improvement Threshold (5%) FPS: 3500 (Equity Score: 0.3138)
+
+FPS Values Ranked by Equity Score (best to worst):
+----------------------------------------------
+FPS: 4000, Equity Score: 0.3078
+FPS: 3500, Equity Score: 0.3138
+FPS: 3000, Equity Score: 0.3253
+FPS: 6000, Equity Score: 0.3287
+FPS: 5000, Equity Score: 0.3302
+FPS: 4500, Equity Score: 0.3328
+FPS: 8000, Equity Score: 0.3344
+FPS: 7000, Equity Score: 0.3380
+FPS: 2500, Equity Score: 0.3678
+FPS: 2000, Equity Score: 0.4993
+FPS: 1500, Equity Score: 0.6917
+FPS: 1000, Equity Score: 0.9148
+
+Improvement Rates Between FPS Points:
+----------------------------------
+FPS: 1500, Improvement: 24.39%
+FPS: 2000, Improvement: 27.82%
+FPS: 2500, Improvement: 26.33%
+FPS: 3000, Improvement: 11.57%
+FPS: 3500, Improvement: 3.54%
+FPS: 4000, Improvement: 1.90%
+FPS: 4500, Improvement: -8.14%
+FPS: 5000, Improvement: 0.80%
+FPS: 6000, Improvement: 0.46%
+FPS: 7000, Improvement: -2.84%
+FPS: 8000, Improvement: 1.04%

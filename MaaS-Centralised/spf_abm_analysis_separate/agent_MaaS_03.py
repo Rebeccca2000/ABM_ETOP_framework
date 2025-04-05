@@ -1744,15 +1744,13 @@ class MaaS(Agent):
                 record_company_name = 'public'
             elif 'walk' in selected_route['mode']:
                 record_company_name = 'walk'
-            
             else:
                 record_company_name = selected_route['mode'].split('_')[1]
-                
+                    
             route_details = selected_route['route']
             total_price = selected_route['price']
             maas_surcharge = 0  # No MaaS surcharge for non-MaaS options
             total_time = selected_route['time']
-
 
         # Create a new booking log entry
         new_booking = ServiceBookingLog(
@@ -1769,7 +1767,8 @@ class MaaS(Agent):
             destination_coordinates=destination_coordinates,
             to_station=to_station_info,
             to_destination=to_destination_info,
-            government_subsidy=subsidy  # Add the government subsidy
+            government_subsidy=subsidy,
+            status='Service Selected'  # Initialize with the Service Selected status
         )
 
         try:
@@ -1782,7 +1781,10 @@ class MaaS(Agent):
                 ).first()
 
                 if existing_booking:
-                    print(f"Booking already exists for commuter_id {commuter.unique_id}, request_id {request_id}. Skipping insert.")
+                    print(f"Booking already exists for commuter_id {commuter.unique_id}, request_id {request_id}. Updating status.")
+                    # Update status if booking exists
+                    existing_booking.status = 'Service Selected'
+                    session.commit()
                 else:
                     session.add(new_booking)
                     session.commit()

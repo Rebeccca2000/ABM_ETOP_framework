@@ -1,0 +1,35 @@
+Total System Travel Time Optimization Analysis
+============================================
+
+Raw Data Optimal FPS: 5000 (Travel Time: 3745.88 minutes)
+Elbow Point FPS: 2000 (Travel Time: 3881.88 minutes)
+Improvement Threshold (2%) FPS: 2500 (Travel Time: 3859.38 minutes)
+
+FPS Values Ranked by Total Travel Time (best to worst):
+--------------------------------------------------
+FPS: 5000, Travel Time: 3745.88 minutes
+FPS: 4000, Travel Time: 3765.50 minutes
+FPS: 3500, Travel Time: 3799.25 minutes
+FPS: 8000, Travel Time: 3808.62 minutes
+FPS: 3000, Travel Time: 3816.62 minutes
+FPS: 6000, Travel Time: 3830.25 minutes
+FPS: 4500, Travel Time: 3836.75 minutes
+FPS: 2500, Travel Time: 3859.38 minutes
+FPS: 7000, Travel Time: 3875.62 minutes
+FPS: 2000, Travel Time: 3881.88 minutes
+FPS: 1500, Travel Time: 4439.00 minutes
+FPS: 1000, Travel Time: 4931.75 minutes
+
+Improvement Rates Between FPS Points:
+----------------------------------
+FPS: 1500, Improvement: 9.99%
+FPS: 2000, Improvement: 12.55%
+FPS: 2500, Improvement: 0.58%
+FPS: 3000, Improvement: 1.11%
+FPS: 3500, Improvement: 0.46%
+FPS: 4000, Improvement: 0.89%
+FPS: 4500, Improvement: -1.89%
+FPS: 5000, Improvement: 2.37%
+FPS: 6000, Improvement: -2.25%
+FPS: 7000, Improvement: -1.18%
+FPS: 8000, Improvement: 1.73%
