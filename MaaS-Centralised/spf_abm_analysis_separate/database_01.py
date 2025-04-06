@@ -1,13 +1,13 @@
 from agent_subsidy_pool import SubsidyPoolConfig
-DB_CONNECTION_STRING = 'sqlite:///service_provider_database_2.db'
-SIMULATION_STEPS = 35
+DB_CONNECTION_STRING = 'sqlite:///service_provider_database.db'
+SIMULATION_STEPS = 144
 # #####################################Control for commuters#################################
-num_commuters = 200
+num_commuters = 130
 income_weights = [0.5, 0.3, 0.2]# income_levels = ['low', 'middle', 'high']
 health_weights = [0.9, 0.1]# health_statuses = ['good', 'poor']
 payment_weights = [0.8, 0.2] # payment_schemes = ['PAYG', 'subscription']
-disability_weights = [0.15, 0.85] #[is disabled, not]
-tech_access_weights = [0.98, 0.02] #[has_access, not
+disability_weights = [0.2, 0.8] #[is disabled, not]
+tech_access_weights = [0.95, 0.05] #[has_access, not
 
 
 # # Define health statuses and their respective weights
@@ -16,12 +16,12 @@ tech_access_weights = [0.98, 0.02] #[has_access, not
 # # Define payment schemes and their respective weights
 
 age_distribution = {
-    (18, 25): 0.15,
-    (26, 35): 0.175,
-    (36, 45): 0.25,
-    (46, 55): 0.175,
-    (56, 65): 0.15,
-    (66, 75): 0.10,
+    (18, 25): 0.2, 
+    (26, 35): 0.3, 
+    (36, 45): 0.2, 
+    (46, 55): 0.15, 
+    (56, 65): 0.1, 
+    (66, 75): 0.05,
 }
 
 
@@ -49,31 +49,24 @@ PENALTY_COEFFICIENTS = {
 # the lack of tech access still adds some inconvenience.
 
 AFFORDABILITY_THRESHOLDS = {
-    'low': 25,
-    'middle': 85,
-    'high': 250,
-    'default': 65
+    'low': 25, 'middle': 40, 'high': 130
 }
 
 
 VALUE_OF_TIME = {
-    'low': 9.64,
-    'middle': 23.7,
-    'high': 67.2
+    'low': 5, 'middle': 10, 'high': 20
 }
 
 FLEXIBILITY_ADJUSTMENTS = {
-    'low': 1.05,
-    'medium': 1.0,  # Assuming medium flexibility doesn't change the base value
-    'high': 0.95
+    'low': 1.15, 'medium': 1.0, 'high': 0.85
 }
 
 UTILITY_FUNCTION_BASE_COEFFICIENTS = {
-    'beta_C': -0.05,
-    'beta_T': -0.06,
-    'beta_W': -0.01,
-    'beta_A': -0.01,
-    'alpha': -0.01,
+    'beta_C': -0.15, 
+    'beta_T': -0.09, 
+    'beta_W': -0.04, 
+    'beta_A': -0.04, 
+    'alpha': -0.01
 }
 
 
@@ -83,7 +76,7 @@ ASC_VALUES = {
     'bike': 0,    # Refined value for biking
     'car': 0,     # Refined value for car
     'public': 0,    # Refined value for public transport
-    'maas': 10000,      # Refined value for MaaS bundle
+    'maas': 8,      # Refined value for MaaS bundle
     'default': 0     # Default value for any mode not covered
 }
 
@@ -108,24 +101,23 @@ ASC_VALUES = {
 
 
 UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS = {
-    'beta_C': -0.05,
-    'beta_T': -0.06
+    'beta_C': -0.02,
+    'beta_T': -0.09
 }
 
 ##################################### Congestion Control #################################################
-CONGESTION_ALPHA = 0.15  # Congestion scaling factor
-CONGESTION_BETA = 4      # Congestion exponent
+CONGESTION_ALPHA = 0.03  # Congestion scaling factor
+CONGESTION_BETA = 1.5      # Congestion exponent
 # Define capacity and free-flow time for segments
-CONGESTION_CAPACITY = 5  # Example capacity for all segments
-CONGESTION_T_IJ_FREE_FLOW = 1  # Free-flow travel time for each segment
-BACKGROUND_TRAFFIC_AMOUNT = 40
+CONGESTION_CAPACITY = 10  # Example capacity for all segments
+CONGESTION_T_IJ_FREE_FLOW = 1.5  # Free-flow travel time for each segment
+BACKGROUND_TRAFFIC_AMOUNT = 120
 CHANCE_FOR_INSERTING_RANDOM_TRAFFIC = 0.2
 ####################################Control for MaaS######################################################
 DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS = {
-    'S_base': 0.08, # Base surcharge (10%)
-    'alpha': 0.2,  # Sensitivity coefficient
-    'delta': 0.5 # Reduction factor for subscription model
-
+    'S_base': 0.02,  # Base surcharge (2%)
+            'alpha': 0.10,   # Sensitivity coefficient
+            'delta': 0.5  
 }
 
 
@@ -141,25 +133,25 @@ subsidy_dataset = {
 }
 #More policy can be applied here, such as subsidy for the disabled ppel to have more access to Uber
 # For daily subsidy pool
-daily_config = SubsidyPoolConfig('daily', 1000)  # 1000 units per day
+daily_config = SubsidyPoolConfig('daily', 4000)  # 1000 units per day
 
 # For weekly subsidy pool (Mon-Fri)
-weekly_config = SubsidyPoolConfig('weekly', 5000)  # 5000 units per week
+weekly_config = SubsidyPoolConfig('weekly', 22000)  # 5000 units per week
 
 # For monthly subsidy pool
-monthly_config = SubsidyPoolConfig('monthly', 20000)  # 20000 units per month
+monthly_config = SubsidyPoolConfig('monthly', 80000)  # 20000 units per month
 ####################################Control for providers#############################################
 public_price_table = {
-    'train': {'on_peak': 2, 'off_peak': 1.5},
-    'bus': {'on_peak': 1, 'off_peak': 0.8}
+    'train': {'on_peak': 3, 'off_peak': 2.6},
+    'bus': {'on_peak': 2.4, 'off_peak': 2}
 }
 
 # Sensitivity coefficients for dynamic pricing
 ALPHA_VALUES = {
-    'UberLike1': 0.5,  # Sensitivity for UberLike1
-    'UberLike2': 0.5,  # Sensitivity for UberLike2
-    'BikeShare1': 0.5, # Sensitivity for BikeShare1
-    'BikeShare2': 0.5  # Sensitivity for BikeShare2
+    'UberLike1': 0.3,
+            'UberLike2': 0.3,
+            'BikeShare1': 0.25,
+            'BikeShare2': 0.25
 }
 
 # Baseline demand for each service (this could be based on historical data or set as an initial assumption)
@@ -169,19 +161,19 @@ BASELINE_DEMANDS = {
     # 'BikeShare1': None, # Baseline demand for BikeShare1
     # 'BikeShare2': None  # Baseline demand for BikeShare2
 }
-UberLike1_cpacity = 20
-UberLike1_price = 6
+UberLike1_cpacity = 15
+UberLike1_price = 15.5
 
-UberLike2_cpacity = 25
-UberLike2_price = 6.5
+UberLike2_cpacity = 19
+UberLike2_price = 16.5
 
 
-BikeShare1_capacity = 15
-BikeShare1_price = 1
+BikeShare1_capacity = 10
+BikeShare1_price = 2.5
 
 
 BikeShare2_capacity = 12
-BikeShare2_price = 1.2
+BikeShare2_price = 3
 
 
 
