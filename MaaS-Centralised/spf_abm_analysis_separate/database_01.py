@@ -1,6 +1,6 @@
 from agent_subsidy_pool import SubsidyPoolConfig
 DB_CONNECTION_STRING = 'sqlite:///service_provider_database.db'
-SIMULATION_STEPS = 144
+SIMULATION_STEPS = 120
 # #####################################Control for commuters#################################
 num_commuters = 130
 income_weights = [0.5, 0.3, 0.2]# income_levels = ['low', 'middle', 'high']
@@ -122,18 +122,18 @@ DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS = {
 
 
 ####################################Control of the map############################################
-grid_width = 55
-grid_height = 55
+grid_width = 85
+grid_height = 85
 
 ####################################Government Subsidy##################################
 subsidy_dataset = {
-    'low': {'bike': 0.50, 'car': 0.5, 'MaaS_Bundle': 0.5},  # 50% subsidy for bikes, 20% for cars, etc.
-    'middle': {'bike': 0.5, 'car': 0.5, 'MaaS_Bundle': 0.5},
-    'high': {'bike': 0.5, 'car': 0.5, 'MaaS_Bundle': 0.5},
+    'low': {'bike': 0.50, 'car': 0.55, 'MaaS_Bundle': 0.5},  # 50% subsidy for bikes, 20% for cars, etc.
+    'middle': {'bike': 0.23, 'car': 0.35, 'MaaS_Bundle': 0.35},
+    'high': {'bike': 0.1, 'car': 0.05, 'MaaS_Bundle': 0.1},
 }
 #More policy can be applied here, such as subsidy for the disabled ppel to have more access to Uber
 # For daily subsidy pool
-daily_config = SubsidyPoolConfig('daily', 4000)  # 1000 units per day
+daily_config = SubsidyPoolConfig('daily', 0)  # 1000 units per day
 
 # For weekly subsidy pool (Mon-Fri)
 weekly_config = SubsidyPoolConfig('weekly', 22000)  # 5000 units per week

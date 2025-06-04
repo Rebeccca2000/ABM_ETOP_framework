@@ -1,0 +1,11 @@
+parameter_set,run,seed,metric,value
+Default,0,21,travel_time_equity_index,26.81692887958873
+Default,1,1021,travel_time_equity_index,33.9215829390248
+Default,2,2021,travel_time_equity_index,26.129014649297666
+Default,3,3021,travel_time_equity_index,37.59876683470188
+Default,4,4021,travel_time_equity_index,23.406408811897577
+Default,5,5021,travel_time_equity_index,23.849786816558968
+Default,6,6021,travel_time_equity_index,26.575318887244823
+Default,7,7021,travel_time_equity_index,18.982025624314485
+Default,8,8021,travel_time_equity_index,26.390453648915187
+Default,9,9021,travel_time_equity_index,31.370302917544038

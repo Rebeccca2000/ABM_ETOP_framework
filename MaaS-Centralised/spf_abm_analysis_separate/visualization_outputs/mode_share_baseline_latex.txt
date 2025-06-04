@@ -1,0 +1,15 @@
+\begin{table}[!t]
+\centering
+\caption{Baseline Mode Share Distribution by Income Group}
+\label{tab:baseline_mode_share}
+\begin{tabular}{lccc}
+\hline
+\textbf{Mode} & \textbf{Low Income (\%)} & \textbf{Middle Income (\%)} & \textbf{High Income (\%)} \\
+\hline
+Bike Services & 1.6 & 5.2 & 5.7 \\
+Car Services & 8.2 & 42.3 & 71.6 \\
+Public Transit & 11.5 & 10.3 & 9.1 \\
+Walking & 19.7 & 0.0 & 0.0 \\
+\hline
+\end{tabular}
+\end{table}

@@ -185,55 +185,25 @@ class ABMVisualizer:
         return stations
     
     def _get_agent_positions(self, step=None):
-        """
-        Get agent positions for a specific time step.
+        """Get agent positions from database, handling SQLite limitations"""
+        if not self.engine:
+            return pd.DataFrame()
         
-        Args:
-            step: Simulation step (None for latest)
-            
-        Returns:
-            DataFrame with agent positions and attributes
+        # SQLite-compatible query (no array indexing)
+        query = """
+        SELECT 
+            c.commuter_id as agent_id, 
+            c.location_x as x,  -- Adjust column names to match your schema
+            c.location_y as y,
+            c.income_level, 
+            s.record_company_name as current_mode,
+            c.has_disability, 
+            c.age
+        FROM commuter_info_log c
+        LEFT JOIN service_booking_log s ON c.commuter_id = s.commuter_id
         """
-        if self.model:
-            # Get from model memory
-            data = []
-            for agent in self.model.commuter_agents:
-                data.append({
-                    'agent_id': agent.unique_id,
-                    'x': agent.location[0],
-                    'y': agent.location[1],
-                    'income_level': agent.income_level,
-                    'current_mode': agent.current_mode,
-                    'has_disability': agent.has_disability,
-                    'age': agent.age
-                })
-            return pd.DataFrame(data)
         
-        if self.engine:
-            # Try to get from database
-            # This needs to be customized based on your database schema
-            if step is not None:
-                query = """
-                SELECT a.commuter_id as agent_id, a.location ->> '$.x' as x, 
-                       a.location ->> '$.y' as y, a.income_level, 
-                       a.current_mode, a.has_disability, a.age
-                FROM agent_positions a
-                WHERE a.step = :step
-                """
-                return self._execute_query(query, {'step': step})
-            else:
-                query = """
-                SELECT c.commuter_id as agent_id, c.location[0] as x, 
-                       c.location[1] as y, c.income_level, 
-                       CASE WHEN s.status = 'Service Selected' THEN s.record_company_name ELSE NULL END as current_mode,
-                       c.has_disability, c.age
-                FROM commuter_info_log c
-                LEFT JOIN service_booking_log s ON c.commuter_id = s.commuter_id
-                """
-                return self._execute_query(query)
-                
-        # Return empty DataFrame if no data available
-        return pd.DataFrame(columns=['agent_id', 'x', 'y', 'income_level', 'current_mode', 'has_disability', 'age'])
+        return self._execute_query(query)
     
     def _get_trip_data(self):
         """
@@ -359,6 +329,134 @@ class ABMVisualizer:
         # Return empty DataFrame if no data available
         return pd.DataFrame(columns=['step', 'income_level', 'mode', 'share'])
     
+    def generate_mode_share_baseline_table(self, save=True, as_latex=True):
+        """
+        Generate a baseline mode share distribution table by income group.
+        
+        Args:
+            save: Whether to save the table to a file
+            as_latex: Whether to output LaTeX format
+            
+        Returns:
+            DataFrame with mode share percentages
+        """
+        if not self.engine:
+            print("No database connection available.")
+            return None
+        
+        # Query to get mode choices by income level
+        query = """
+        SELECT 
+            c.income_level,
+            CASE
+                WHEN s.record_company_name IN ('public') THEN 'Public Transit'
+                WHEN s.record_company_name IN ('UberLike1', 'UberLike2') THEN 'Car Services'
+                WHEN s.record_company_name IN ('BikeShare1', 'BikeShare2') THEN 'Bike Services'
+                WHEN s.record_company_name IN ('walk') THEN 'Walking'
+                WHEN s.record_company_name IN ('MaaS_Bundle') THEN 'MaaS Bundle'
+                ELSE s.record_company_name
+            END AS mode_category,
+            COUNT(*) as trip_count
+        FROM service_booking_log s
+        JOIN commuter_info_log c ON s.commuter_id = c.commuter_id
+        WHERE s.status = 'finished'  -- Only count completed trips
+        GROUP BY c.income_level, mode_category
+        ORDER BY c.income_level, mode_category
+        """
+        
+        trip_data = self._execute_query(query)
+        
+        if trip_data.empty:
+            print("No trip data available.")
+            return None
+        
+        # Calculate percentages by income level
+        result_data = []
+        
+        for income in ['low', 'middle', 'high']:
+            income_trips = trip_data[trip_data['income_level'] == income]
+            if income_trips.empty:
+                continue
+                
+            total_trips = income_trips['trip_count'].sum()
+            
+            for mode in ['Public Transit', 'Car Services', 'Bike Services', 'Walking']:
+                mode_trips = income_trips[income_trips['mode_category'] == mode]
+                count = mode_trips['trip_count'].sum() if not mode_trips.empty else 0
+                percentage = (count / total_trips * 100) if total_trips > 0 else 0
+                
+                result_data.append({
+                    'Income Level': income.capitalize(),
+                    'Mode': mode,
+                    'Trip Count': count,
+                    'Percentage': percentage
+                })
+        
+        # Convert to DataFrame
+        result_df = pd.DataFrame(result_data)
+        
+        # Pivot table for better visualization
+        pivot_df = result_df.pivot(index='Mode', columns='Income Level', values='Percentage')
+        
+        # Fill NaN with 0
+        pivot_df = pivot_df.fillna(0)
+        
+        # Ensure all columns exist
+        for col in ['Low', 'Middle', 'High']:
+            if col not in pivot_df.columns:
+                pivot_df[col] = 0
+        
+        # Reorder columns
+        pivot_df = pivot_df[['Low', 'Middle', 'High']]
+        
+        # Save results
+        if save:
+            # Save as CSV
+            pivot_df.reset_index().to_csv(f'{self.output_dir}/mode_share_baseline.csv', index=False)
+            
+            # Create visualization
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.axis('tight')
+            ax.axis('off')
+            table = ax.table(cellText=pivot_df.reset_index().round(1).values,
+                            colLabels=['Mode', 'Low Income (%)', 'Middle Income (%)', 'High Income (%)'],
+                            cellLoc='center', loc='center')
+            
+            table.auto_set_font_size(False)
+            table.set_fontsize(12)
+            table.scale(1.2, 1.5)
+            
+            plt.title('Baseline Mode Share Distribution by Income Group', fontsize=16)
+            plt.tight_layout()
+            plt.savefig(f'{self.output_dir}/mode_share_baseline_table.png', dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            # Generate LaTeX if requested
+            if as_latex:
+                latex_table = "\\begin{table}[!t]\n"
+                latex_table += "\\centering\n"
+                latex_table += "\\caption{Baseline Mode Share Distribution by Income Group}\n"
+                latex_table += "\\label{tab:baseline_mode_share}\n"
+                latex_table += "\\begin{tabular}{lccc}\n"
+                latex_table += "\\hline\n"
+                latex_table += "\\textbf{Mode} & \\textbf{Low Income (\\%)} & \\textbf{Middle Income (\\%)} & \\textbf{High Income (\\%)} \\\\\n"
+                latex_table += "\\hline\n"
+                
+                for idx, row in pivot_df.reset_index().iterrows():
+                    latex_table += f"{row['Mode']} & {row['Low']:.1f} & {row['Middle']:.1f} & {row['High']:.1f} \\\\\n"
+                
+                latex_table += "\\hline\n"
+                latex_table += "\\end{tabular}\n"
+                latex_table += "\\end{table}"
+                
+                with open(f'{self.output_dir}/mode_share_baseline_latex.txt', 'w') as f:
+                    f.write(latex_table)
+                
+                print(f"LaTeX table saved to {self.output_dir}/mode_share_baseline_latex.txt")
+        
+        return pivot_df
+
+   
     def plot_spatial_distribution(self, step=None, show_stations=True, 
                                  by_income=True, by_mode=False, save=True):
         """
@@ -441,15 +539,12 @@ class ABMVisualizer:
         elif by_mode and not by_income:
             # Group by transportation mode
             for mode, group in agent_data.groupby('current_mode'):
-                if pd.isnull(mode) or mode is None:
-                    label = 'Not Traveling'
-                    color = 'gray'
-                else:
-                    mode_str = str(mode)
-                    # Get base mode (e.g., 'car' from 'car_UberLike1')
-                    base_mode = mode_str.split('_')[0] if '_' in mode_str else mode_str
-                    label = base_mode.capitalize()
-                    color = self.mode_colors.get(base_mode, 'gray')
+
+                mode_str = str(mode)
+                # Get base mode (e.g., 'car' from 'car_UberLike1')
+                base_mode = mode_str.split('_')[0] if '_' in mode_str else mode_str
+                label = base_mode.capitalize()
+                color = self.mode_colors.get(base_mode, 'gray')
                     
                 ax.scatter(group['x'], group['y'], 
                           color=color, label=label, 
@@ -545,7 +640,7 @@ class ABMVisualizer:
                     ax.plot([trip['origin_x'], trip['dest_x']], 
                            [trip['origin_y'], trip['dest_y']], 
                            color=self.income_colors.get(income, 'gray'), 
-                           alpha=0.1, linewidth=0.5)
+                           alpha=0.45, linewidth=0.5)
                 
                 # Plot a sample line for the legend
                 ax.plot([-10, -10], [-10, -10], 
@@ -562,7 +657,7 @@ class ABMVisualizer:
                     ax.plot([trip['origin_x'], trip['dest_x']], 
                            [trip['origin_y'], trip['dest_y']], 
                            color=self.mode_colors.get(base_mode, 'gray'), 
-                           alpha=0.1, linewidth=0.5)
+                           alpha=0.45, linewidth=0.5)
                 
                 # Plot a sample line for the legend
                 ax.plot([-10, -10], [-10, -10], 
@@ -783,8 +878,38 @@ class ABMVisualizer:
             print("No mode share data available.")
             return None
         
+        # Filter out 'not traveling' mode
+        mode_share_data = mode_share_data[~mode_share_data['mode'].str.lower().isin(['not traveling', 'not_traveling'])]
+        
         # Create a multi-panel figure
         fig, axes = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
+        
+        # Define more distinguishable colors and line styles
+        improved_mode_colors = {
+            'bike': '#1f77b4',     # Strong blue
+            'bus': '#9467bd',      # Purple
+            'car': '#e31a1c',      # Bright red
+            'train': '#ff7f0e',    # Orange
+            'walk': '#2ca02c'      # Green
+        }
+        
+        # Define different line styles for additional differentiation
+        line_styles = {
+            'bike': '-',
+            'bus': '--',
+            'car': '-',
+            'train': '-.',
+            'walk': '-'
+        }
+        
+        # Define line widths to further enhance visibility
+        line_widths = {
+            'bike': 2,
+            'bus': 2.5,
+            'car': 2.5,
+            'train': 2.5,
+            'walk': 2
+        }
         
         for i, income in enumerate(['low', 'middle', 'high']):
             ax = axes[i]
@@ -806,20 +931,28 @@ class ABMVisualizer:
                 
                 # Plot each mode
                 for mode in income_pivot.columns:
-                    if mode in self.mode_colors:
-                        color = self.mode_colors[mode]
-                    elif mode.startswith('car_') or mode.startswith('bike_'):
-                        base_mode = mode.split('_')[0]
-                        color = self.mode_colors.get(base_mode, 'gray')
-                    else:
-                        color = 'gray'
+                    # Get base mode for compound modes (e.g., 'car_UberLike1' → 'car')
+                    base_mode = mode.split('_')[0] if '_' in mode else mode
                     
-                    ax.plot(income_pivot.index, income_pivot[mode], 
-                           label=mode.capitalize().replace('_', ' '), 
-                           color=color, marker='o', markersize=3, linewidth=2)
+                    # Use improved color scheme
+                    color = improved_mode_colors.get(base_mode, 'gray')
+                    
+                    # Use different line styles based on the mode
+                    line_style = line_styles.get(base_mode, '-')
+                    
+                    # Use different line widths
+                    line_width = line_widths.get(base_mode, 2)
+                    
+                    ax.plot(income_pivot.index, income_pivot[mode],
+                        label=mode.capitalize().replace('_', ' '),
+                        color=color, 
+                        linestyle=line_style,
+                        linewidth=line_width,
+                        marker='o' if base_mode in ['car', 'train'] else None,  # Only add markers for key modes
+                        markersize=3)
                 
-                ax.set_ylabel(f'{income.capitalize()} Income\nMode Share (%)', 
-                             fontsize=12)
+                ax.set_ylabel(f'{income.capitalize()} Income\nMode Share (%)',
+                            fontsize=12)
                 ax.set_title(f'Mode Share Evolution: {income.capitalize()} Income',
                             fontsize=14)
                 ax.grid(True, alpha=0.3)
@@ -827,19 +960,26 @@ class ABMVisualizer:
                 # Create legend with unique entries
                 handles, labels = ax.get_legend_handles_labels()
                 by_label = dict(zip(labels, handles))
-                ax.legend(by_label.values(), by_label.keys(), 
-                         loc='center left', bbox_to_anchor=(1, 0.5))
+                
+                # Place legend more effectively
+                ax.legend(by_label.values(), by_label.keys(),
+                        loc='center left', bbox_to_anchor=(1, 0.5),
+                        frameon=True, framealpha=0.8)  # Add a semi-transparent background
                 
                 ax.set_ylim(0, 100)
-            
+        
+        # Add a light gray background to the entire figure to enhance contrast
+        for ax in axes:
+            ax.set_facecolor('#f8f8f8')
+        
         # Set common x-label
         axes[-1].set_xlabel('Simulation Step', fontsize=12)
         
         plt.tight_layout()
         
         if save:
-            plt.savefig(f'{self.output_dir}/mode_share_evolution.png', 
-                       dpi=300, bbox_inches='tight')
+            plt.savefig(f'{self.output_dir}/mode_share_evolution.png',
+                        dpi=300, bbox_inches='tight')
         
         return fig
     
@@ -1056,6 +1196,571 @@ class ABMVisualizer:
         
         return fig
     
+    def _get_dynamic_pricing_data(self):
+        """Get dynamic pricing data for shared services over time."""
+        if not self.engine:
+            return pd.DataFrame()
+        
+        query = """
+        SELECT 
+            step_count as step,
+            company_name,
+            current_price_0,
+            current_price_1,
+            current_price_2,
+            current_price_3,
+            current_price_4,
+            current_price_5,
+            availability_0,
+            availability_1,
+            availability_2,
+            availability_3,
+            availability_4,
+            availability_5
+        FROM (
+            SELECT * FROM UberLike1
+            UNION ALL
+            SELECT * FROM UberLike2
+            UNION ALL
+            SELECT * FROM BikeShare1
+            UNION ALL
+            SELECT * FROM BikeShare2
+        )
+        ORDER BY step_count, company_name
+        """
+        
+        pricing_data = self._execute_query(query)
+        
+        # Reshape data for easier plotting
+        if not pricing_data.empty:
+            # Melt price columns into rows
+            price_data = pricing_data.melt(
+                id_vars=['step', 'company_name'],
+                value_vars=['current_price_0', 'current_price_1', 'current_price_2', 
+                            'current_price_3', 'current_price_4', 'current_price_5'],
+                var_name='time_offset',
+                value_name='price'
+            )
+            
+            # Extract time offset number
+            price_data['time_offset'] = price_data['time_offset'].str.extract('(\d+)').astype(int)
+            
+            # Do the same for availability
+            avail_data = pricing_data.melt(
+                id_vars=['step', 'company_name'],
+                value_vars=['availability_0', 'availability_1', 'availability_2', 
+                            'availability_3', 'availability_4', 'availability_5'],
+                var_name='time_offset',
+                value_name='availability'
+            )
+            avail_data['time_offset'] = avail_data['time_offset'].str.extract('(\d+)').astype(int)
+            
+            # Merge price and availability data
+            merged_data = pd.merge(
+                price_data, avail_data,
+                on=['step', 'company_name', 'time_offset']
+            )
+            
+            return merged_data
+        
+        return pd.DataFrame()
+
+    def plot_dynamic_pricing(self, save=True):
+        """
+        Plot dynamic pricing changes for shared mobility services over time.
+        
+        Args:
+            save: Whether to save the visualization
+            
+        Returns:
+            Matplotlib figure
+        """
+        # Get pricing data
+        pricing_data = self._get_dynamic_pricing_data()
+        
+        if pricing_data.empty:
+            print("No dynamic pricing data available.")
+            return None
+        
+        # Filter for current time step (offset=0)
+        current_prices = pricing_data[pricing_data['time_offset'] == 0]
+        
+        # Ensure step column is numeric and sorted
+        current_prices['step'] = pd.to_numeric(current_prices['step'])
+        current_prices = current_prices.sort_values(['company_name', 'step'])
+        
+        # Create figure with price and utilization plots
+        fig, axes = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
+        
+        # Custom colors for services
+        service_colors = {
+            'UberLike1': '#1f77b4',   # blue
+            'UberLike2': '#2ca02c',   # green
+            'BikeShare1': '#ff7f0e',  # orange
+            'BikeShare2': '#d62728'   # red
+        }
+        
+        # Custom markers for services
+        service_markers = {
+            'UberLike1': 'o',
+            'UberLike2': 's',
+            'BikeShare1': '^',
+            'BikeShare2': 'D'
+        }
+        
+        # Price plot
+        ax1 = axes[0]
+        
+        for company, group in current_prices.groupby('company_name'):
+            # Calculate price relative to base price
+            # Note: In a real implementation, you would fetch the base price
+            base_price = group['price'].min()
+            
+            ax1.plot(group['step'], group['price'], 
+                    label=company,
+                    color=service_colors.get(company, 'gray'),
+                    marker=service_markers.get(company, 'o'),
+                    markersize=4, linewidth=2, alpha=0.8)
+        
+        ax1.set_title('Dynamic Pricing Over Time', fontsize=16)
+        ax1.set_ylabel('Price (AU$)', fontsize=14)
+        ax1.grid(True, alpha=0.3)
+        ax1.legend(loc='upper left', fontsize=12)
+        
+        # Utilization plot
+        ax2 = axes[1]
+        
+        for company, group in current_prices.groupby('company_name'):
+            # For each provider, calculate utilization percentage
+            # Estimate capacity from max availability
+            max_avail = group['availability'].max()
+            group['utilization'] = 100 * (1 - group['availability'] / max_avail)
+            
+            ax2.plot(group['step'], group['utilization'], 
+                    label=company,
+                    color=service_colors.get(company, 'gray'),
+                    marker=service_markers.get(company, 'o'),
+                    markersize=4, linewidth=2, alpha=0.8)
+        
+        ax2.set_title('Service Utilization Over Time', fontsize=16)
+        ax2.set_xlabel('Simulation Step', fontsize=14)
+        ax2.set_ylabel('Utilization (%)', fontsize=14)
+        ax2.grid(True, alpha=0.3)
+        ax2.set_ylim(0, 100)
+        
+        # Add peak period shading
+        def add_peak_period_shading(ax):
+            # Morning peak (6:30am-10am): ticks 36-60
+            # Evening peak (3pm-7pm): ticks 90-114
+            ticks_per_day = 144
+            
+            for step in current_prices['step'].unique():
+                day = step // ticks_per_day
+                day_start = day * ticks_per_day
+                
+                # Morning peak
+                morning_peak_start = day_start + 36
+                morning_peak_end = day_start + 60
+                
+                # Evening peak
+                evening_peak_start = day_start + 90
+                evening_peak_end = day_start + 114
+                
+                # Add shading if this day is in our data
+                if morning_peak_start <= current_prices['step'].max():
+                    ax.axvspan(morning_peak_start, morning_peak_end, 
+                            alpha=0.2, color='gray', label='_nolegend_')
+                
+                if evening_peak_start <= current_prices['step'].max():
+                    ax.axvspan(evening_peak_start, evening_peak_end, 
+                            alpha=0.2, color='gray', label='_nolegend_')
+        
+        # Add peak period shading to both plots
+        add_peak_period_shading(ax1)
+        add_peak_period_shading(ax2)
+        
+        # Add annotation for peak periods
+        ax2.annotate('Peak Periods', xy=(0.02, 0.02), xycoords='figure fraction',
+                    fontsize=12, bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8))
+        
+        plt.tight_layout()
+        
+        if save:
+            plt.savefig(f'{self.output_dir}/dynamic_pricing_analysis.png', 
+                    dpi=300, bbox_inches='tight')
+        
+        return fig
+
+    # Fix for background traffic query
+    def _get_background_traffic_data(self):
+        """Get background traffic data"""
+        if not self.engine:
+            return pd.DataFrame()
+        
+        # Get column names from the table first
+        cols_query = """PRAGMA table_info(share_service_booking_log)"""
+        cols = self._execute_query(cols_query)
+        
+        if cols.empty:
+            print("Cannot determine share_service_booking_log columns")
+            return pd.DataFrame()
+        
+        # Adjust query based on available columns (check if step, step_time or affected_step exists)
+        col_names = cols['name'].tolist() if 'name' in cols.columns else []
+        
+        if 'step_time' in col_names:
+            time_col = 'step_time'
+        elif 'affected_steps' in col_names:
+            time_col = 'affected_steps'
+        elif 'step' in col_names:
+            time_col = 'step'
+        else:
+            print("No suitable time column found in share_service_booking_log")
+            return pd.DataFrame()
+        
+        query = f"""
+        SELECT 
+            {time_col} as step,
+            COUNT(*) as traffic_volume
+        FROM share_service_booking_log s
+        WHERE s.commuter_id = -1
+        GROUP BY {time_col}
+        ORDER BY {time_col}
+        """
+        
+        return self._execute_query(query)
+
+    # Fix for congestion data
+    def _get_congestion_data(self):
+        """Get congestion data avoiding unhashable type errors"""
+        if not self.engine:
+            return pd.DataFrame()
+        
+        query = """
+        SELECT 
+            r.route_details,
+            COUNT(*) as frequency
+        FROM share_service_booking_log r
+        WHERE r.route_details IS NOT NULL AND r.commuter_id != -1
+        GROUP BY r.route_details
+        """
+        
+        routes = self._execute_query(query)
+        
+        # Process routes to extract segment congestion
+        segments = []
+        
+        for _, row in routes.iterrows():
+            route_details = row['route_details']
+            frequency = row['frequency']
+            
+            try:
+                # Parse route_details
+                if isinstance(route_details, str):
+                    route_coords = json.loads(route_details)
+                elif isinstance(route_details, list):
+                    route_coords = route_details
+                else:
+                    continue
+                
+                # Process consecutive points as segments
+                for i in range(len(route_coords) - 1):
+                    start_point = route_coords[i]
+                    end_point = route_coords[i + 1]
+                    
+                    # Ensure points are tuples (hashable) not lists
+                    if isinstance(start_point, list):
+                        start_x, start_y = start_point
+                    else:
+                        start_x, start_y = start_point[0], start_point[1]
+                        
+                    if isinstance(end_point, list):
+                        end_x, end_y = end_point
+                    else:
+                        end_x, end_y = end_point[0], end_point[1]
+                    
+                    segments.append({
+                        'start_x': float(start_x),
+                        'start_y': float(start_y),
+                        'end_x': float(end_x),
+                        'end_y': float(end_y),
+                        'volume': int(frequency)
+                    })
+            except Exception as e:
+                print(f"Error processing route: {e}")
+                continue
+        
+        # Manual aggregation to avoid groupby issues
+        if segments:
+            segment_dict = {}
+            for segment in segments:
+                key = (segment['start_x'], segment['start_y'], 
+                    segment['end_x'], segment['end_y'])
+                if key in segment_dict:
+                    segment_dict[key] += segment['volume']
+                else:
+                    segment_dict[key] = segment['volume']
+            
+            # Convert back to DataFrame
+            agg_segments = []
+            for (start_x, start_y, end_x, end_y), volume in segment_dict.items():
+                agg_segments.append({
+                    'start_x': start_x,
+                    'start_y': start_y,
+                    'end_x': end_x,
+                    'end_y': end_y,
+                    'volume': volume
+                })
+            
+            return pd.DataFrame(agg_segments)
+        
+        return pd.DataFrame()
+
+
+    def plot_background_traffic(self, save=True):
+        """
+        Plot background traffic patterns over time.
+        
+        Args:
+            save: Whether to save the visualization
+            
+        Returns:
+            Matplotlib figure
+        """
+        # Get background traffic data
+        traffic_data = self._get_background_traffic_data()
+        
+        if traffic_data.empty:
+            print("No background traffic data available.")
+            return None
+        
+        # Ensure columns are numeric
+        for col in ['day', 'time_of_day', 'step', 'traffic_volume']:
+            if col in traffic_data.columns:
+                traffic_data[col] = pd.to_numeric(traffic_data[col], errors='coerce')
+        
+        # Create figure with multiple panels
+        fig = plt.figure(figsize=(14, 14))
+        gs = fig.add_gridspec(2, 2, height_ratios=[2, 1])
+        
+        # 1. Time series plot
+        ax1 = fig.add_subplot(gs[0, :])
+        
+        ax1.plot(traffic_data['step'], traffic_data['traffic_volume'], 
+                color='#1f77b4', linewidth=2, alpha=0.8)
+        
+        # Add peak period shading
+        def add_peak_period_shading(ax):
+            ticks_per_day = 144
+            
+            for day in range(int(traffic_data['day'].min()), int(traffic_data['day'].max()) + 1):
+                day_start = day * ticks_per_day
+                
+                # Morning peak (6:30am-10am): ticks 36-60
+                morning_peak_start = day_start + 36
+                morning_peak_end = day_start + 60
+                
+                # Evening peak (3pm-7pm): ticks 90-114
+                evening_peak_start = day_start + 90
+                evening_peak_end = day_start + 114
+                
+                # Add shading
+                ax.axvspan(morning_peak_start, morning_peak_end, 
+                        alpha=0.2, color='gray', label='_nolegend_')
+                ax.axvspan(evening_peak_start, evening_peak_end, 
+                        alpha=0.2, color='gray', label='_nolegend_')
+        
+        add_peak_period_shading(ax1)
+        
+        # Add rolling average
+        window = 12  # 2-hour window (12 steps)
+        if len(traffic_data) > window:
+            traffic_data['rolling_avg'] = traffic_data['traffic_volume'].rolling(window=window, center=True).mean()
+            ax1.plot(traffic_data['step'], traffic_data['rolling_avg'], 
+                    color='red', linewidth=2.5, linestyle='--', label='2-hour Moving Average')
+            ax1.legend()
+        
+        ax1.set_title('Background Traffic Volume Over Time', fontsize=16)
+        ax1.set_ylabel('Number of Background Trips', fontsize=14)
+        ax1.grid(True, alpha=0.3)
+        
+        # Add day markers
+        days = sorted(traffic_data['day'].unique())
+        for day in days:
+            day_start = day * 144
+            ax1.axvline(day_start, color='black', linestyle='--', alpha=0.3)
+            ax1.text(day_start + 72, ax1.get_ylim()[1] * 0.95, f"Day {int(day)}", 
+                    ha='center', fontsize=10, bbox=dict(facecolor='white', alpha=0.7))
+        
+        # 2. Daily pattern (time of day)
+        ax2 = fig.add_subplot(gs[1, 0])
+        
+        # Group by time of day and calculate average
+        daily_pattern = traffic_data.groupby('time_of_day')['traffic_volume'].mean().reset_index()
+        
+        ax2.plot(daily_pattern['time_of_day'], daily_pattern['traffic_volume'], 
+                color='#ff7f0e', linewidth=2)
+        
+        # Mark peak periods
+        ax2.axvspan(36, 60, alpha=0.2, color='gray')  # Morning peak
+        ax2.axvspan(90, 114, alpha=0.2, color='gray')  # Evening peak
+        
+        # Add time of day labels
+        time_labels = {
+            0: '12 AM',
+            36: '6 AM',
+            48: '8 AM',
+            72: '12 PM',
+            96: '4 PM',
+            108: '6 PM',
+            120: '8 PM',
+            143: '11:59 PM'
+        }
+        
+        ax2.set_xticks(list(time_labels.keys()))
+        ax2.set_xticklabels(list(time_labels.values()), rotation=45)
+        
+        ax2.set_title('Average Background Traffic by Time of Day', fontsize=14)
+        ax2.set_xlabel('Time of Day', fontsize=12)
+        ax2.set_ylabel('Average Trip Volume', fontsize=12)
+        ax2.grid(True, alpha=0.3)
+        
+        # 3. Weekday vs weekend pattern
+        ax3 = fig.add_subplot(gs[1, 1])
+        
+        # Assuming day % 7 < 5 is a weekday (0=Monday through 4=Friday)
+        traffic_data['is_weekday'] = (traffic_data['day'] % 7) < 5
+        
+        # Group by time of day and weekday/weekend
+        weekday_pattern = traffic_data[traffic_data['is_weekday']].groupby('time_of_day')['traffic_volume'].mean()
+        weekend_pattern = traffic_data[~traffic_data['is_weekday']].groupby('time_of_day')['traffic_volume'].mean()
+        
+        # Only plot if we have both weekday and weekend data
+        if not weekday_pattern.empty and not weekend_pattern.empty:
+            ax3.plot(weekday_pattern.index, weekday_pattern.values, 
+                    label='Weekday', color='#1f77b4', linewidth=2)
+            ax3.plot(weekend_pattern.index, weekend_pattern.values, 
+                    label='Weekend', color='#d62728', linewidth=2)
+            
+            # Mark peak periods
+            ax3.axvspan(36, 60, alpha=0.2, color='gray')  # Morning peak
+            ax3.axvspan(90, 114, alpha=0.2, color='gray')  # Evening peak
+            
+            # Add time of day labels
+            ax3.set_xticks(list(time_labels.keys()))
+            ax3.set_xticklabels(list(time_labels.values()), rotation=45)
+            
+            ax3.set_title('Weekday vs. Weekend Traffic Patterns', fontsize=14)
+            ax3.set_xlabel('Time of Day', fontsize=12)
+            ax3.set_ylabel('Average Trip Volume', fontsize=12)
+            ax3.grid(True, alpha=0.3)
+            ax3.legend()
+        else:
+            ax3.text(0.5, 0.5, 'Insufficient weekday/weekend data', 
+                    ha='center', va='center', fontsize=12)
+        
+        plt.tight_layout()
+        
+        if save:
+            plt.savefig(f'{self.output_dir}/background_traffic_analysis.png', 
+                    dpi=300, bbox_inches='tight')
+        
+        return fig
+
+
+    def plot_congestion(self, save=True):
+        """
+        Plot traffic congestion patterns.
+        
+        Args:
+            save: Whether to save the visualization
+            
+        Returns:
+            Matplotlib figure
+        """
+        # Get congestion data
+        congestion_data = self._get_congestion_data()
+        
+        if congestion_data.empty:
+            print("No congestion data available.")
+            return None
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 10))
+        
+        # Set axis limits
+        ax.set_xlim(0, self.grid_width)
+        ax.set_ylim(0, self.grid_height)
+        
+        # Normalize congestion volumes for coloring
+        max_volume = congestion_data['volume'].max()
+        min_volume = congestion_data['volume'].min()
+        norm = plt.Normalize(min_volume, max_volume)
+        
+        # Create colormap for congestion
+        cmap = plt.cm.get_cmap('YlOrRd')
+        
+        # Plot each segment with color based on volume
+        for _, segment in congestion_data.iterrows():
+            # Get segment points
+            start = (segment['start_x'], segment['start_y'])
+            end = (segment['end_x'], segment['end_y'])
+            
+            # Normalize volume
+            volume = segment['volume']
+            color = cmap(norm(volume))
+            
+            # Calculate line width based on volume (with limits)
+            width = 1 + 3 * (volume - min_volume) / (max_volume - min_volume + 0.001)
+            width = min(5, max(1, width))  # Limit width between 1 and 5
+            
+            # Draw line segment
+            ax.plot([start[0], end[0]], [start[1], end[1]], 
+                color=color, linewidth=width, alpha=0.7)
+        
+        # Add stations
+        stations = self._get_station_data()
+        
+        if stations:
+            for mode, station_dict in stations.items():
+                marker = 's' if mode == 'train' else '^'
+                
+                for station_id, (x, y) in station_dict.items():
+                    ax.scatter(x, y, marker=marker, s=50, 
+                            color='black', edgecolors='white', zorder=10)
+        
+        # Add colorbar
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        cbar = plt.colorbar(sm, ax=ax)
+        cbar.set_label('Traffic Volume', fontsize=12)
+        
+        # Add background grid for reference
+        ax.grid(True, linestyle='--', alpha=0.3)
+        
+        # Add title and labels
+        ax.set_title('Traffic Congestion Analysis', fontsize=16)
+        ax.set_xlabel('X Coordinate', fontsize=12)
+        ax.set_ylabel('Y Coordinate', fontsize=12)
+        
+        # Add legend for stations
+        from matplotlib.lines import Line2D
+        legend_elements = [
+            Line2D([0], [0], marker='s', color='w', markerfacecolor='black',
+                markersize=10, label='Train Station'),
+            Line2D([0], [0], marker='^', color='w', markerfacecolor='black',
+                markersize=10, label='Bus Station')
+        ]
+        ax.legend(handles=legend_elements, loc='upper right')
+        
+        plt.tight_layout()
+        
+        if save:
+            plt.savefig(f'{self.output_dir}/traffic_congestion_analysis.png', 
+                    dpi=300, bbox_inches='tight')
+        
+        return fig
+
     def generate_all_visualizations(self, step=None):
         """
         Generate all available visualizations.
@@ -1095,7 +1800,21 @@ class ABMVisualizer:
         print("Generating distance to station plot...")
         figures['distance_to_station'] = self.plot_distance_to_station_by_income(save=True)
         
+        # Dynamic pricing
+        print("Generating dynamic pricing analysis...")
+        figures['dynamic_pricing'] = self.plot_dynamic_pricing(save=True)
+        
+        # Background traffic
+        print("Generating background traffic analysis...")
+        figures['background_traffic'] = self.plot_background_traffic(save=True)
+        
+        # Traffic congestion
+        print("Generating traffic congestion analysis...")
+        figures['congestion'] = self.plot_congestion(save=True)
+
         print(f"All visualizations saved to {self.output_dir}")
+
+    
         return figures
 
 
@@ -1162,7 +1881,7 @@ def add_trajectory_tracking(model_class):
     return model_class
 
 
-def run_simulation_with_tracking(steps=100, output_dir='visualization_outputs'):
+def run_simulation_with_tracking(steps=144, output_dir='visualization_outputs'):
     """
     Run a simulation with trajectory tracking and generate visualizations.
     
@@ -1226,7 +1945,13 @@ def run_simulation_with_tracking(steps=100, output_dir='visualization_outputs'):
         
         # Create visualizer
         visualizer = ABMVisualizer(model=model, output_dir=output_dir)
-        
+        # Generate baseline table
+        baseline_table = visualizer.generate_mode_share_baseline_table()
+        # Print the result to verify
+        if baseline_table is not None:
+            print(baseline_table)
+        else:
+            print("Failed to generate table")
         return model, visualizer
     
     except Exception as e:
@@ -1290,11 +2015,23 @@ def main():
         db_connection_string = f'sqlite:///{args.db_path}'
         visualizer = ABMVisualizer(db_connection_string=db_connection_string, 
                                   output_dir=args.output_dir)
-    
+        # Generate baseline table
+        baseline_table = visualizer.generate_mode_share_baseline_table()
+        # Print the result to verify
+        if baseline_table is not None:
+            print(baseline_table)
+        else:
+            print("Failed to generate table")
     elif args.db_connection_string:
         visualizer = ABMVisualizer(db_connection_string=args.db_connection_string, 
                                   output_dir=args.output_dir)
-    
+        # Generate baseline table
+        baseline_table = visualizer.generate_mode_share_baseline_table()
+        # Print the result to verify
+        if baseline_table is not None:
+            print(baseline_table)
+        else:
+            print("Failed to generate table")
     # Print error if no data source provided
     if visualizer is None and not args.run_simulation:
         print("Error: Please provide a database path (--db_path) or run a simulation (--run_simulation).")

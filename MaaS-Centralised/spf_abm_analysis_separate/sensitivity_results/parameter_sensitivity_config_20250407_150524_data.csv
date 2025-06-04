@@ -1,0 +1,16 @@
+parameter,parameter_label,parameter_value,run,seed,travel_time_equity_index
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x323c886a0>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x323c886a0>,0,335,38.67429363049568
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x323c886a0>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x323c886a0>,1,1335,37.091159083373704
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x323c886a0>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x323c886a0>,2,2335,37.04023243776783
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16af1a190>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16af1a190>,0,124,34.142290132793555
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16af1a190>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16af1a190>,1,1124,22.296803555622258
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16af1a190>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16af1a190>,2,2124,27.477883933827506
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16e9c5940>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16e9c5940>,0,830,27.439735367831343
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16e9c5940>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16e9c5940>,1,1830,26.586269712052843
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16e9c5940>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16e9c5940>,2,2830,30.578141841833848
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16def83d0>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16def83d0>,0,677,32.51429143340978
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16def83d0>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16def83d0>,1,1677,25.67680091705381
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16def83d0>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x16def83d0>,2,2677,29.67058201058201
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x1664459d0>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x1664459d0>,0,438,29.156200089935027
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x1664459d0>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x1664459d0>,1,1438,32.12816240898433
+subsidy_config,<agent_subsidy_pool.SubsidyPoolConfig object at 0x1664459d0>,<agent_subsidy_pool.SubsidyPoolConfig object at 0x1664459d0>,2,2438,23.97864142868525
