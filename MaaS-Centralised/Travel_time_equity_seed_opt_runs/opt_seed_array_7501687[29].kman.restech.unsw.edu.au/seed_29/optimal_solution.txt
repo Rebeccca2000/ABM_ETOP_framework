@@ -1,0 +1,28 @@
+Optimal FPS Value: 8500.0
+Optimal Travel Time Equity Index: 3.2000
+
+Optimal Subsidy Allocations:
+  high_MaaS_Bundle: 0.6628
+  high_bike: 0.6884
+  high_car: 0.6955
+  high_public: 0.7586
+  low_MaaS_Bundle: 0.7689
+  low_bike: 0.5407
+  low_car: 0.7840
+  low_public: 0.6329
+  middle_MaaS_Bundle: 0.6008
+  middle_bike: 0.6424
+  middle_car: 0.3317
+  middle_public: 0.3776
+
+Travel Time Deviation by Income Level:
+  Low: 1.0705 minutes
+  Middle: 0.1818 minutes
+  High: 1.9477 minutes
+
+Average Travel Times by Income Level:
+  Low: 22.42 minutes
+  Middle: 21.17 minutes
+  High: 19.40 minutes
+
+Overall Average Travel Time: 21.35 minutes

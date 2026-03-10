@@ -1,0 +1,10 @@
+policy_source_fps=3500.0
+scenario_path=/home/z5247491/MaaS-Simulation/MaaS-Centralised/det_total_system_travel_time_runs/det_onefps_7541951.kman.restech.unsw.edu.au/seed_0/deterministic_scenario.json
+fps_values=300.0,600.0,900.0,1200.0,1500.0,1800.0,2000.0,2300.0,2600.0,3000.0,3500.0,4500.0,6500.0
+num_fps=13
+trip_signature_count=9
+
+Key observations
+- total_system_travel_time_min=7745.000000, total_system_travel_time_max=9695.000000
+- total_trips_min=361, total_trips_max=367
+- avg_trip_time_min=21.103542, avg_trip_time_max=26.855956

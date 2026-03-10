@@ -1,0 +1,10 @@
+[INFO] seed_opt_base: /home/z5247491/MaaS-Simulation/MaaS-Centralised/Travel_time_equity_seed_opt_runs
+[INFO] out_dir: /home/z5247491/MaaS-Simulation/MaaS-Centralised/Travel_time_equity_seed_opt_runs/merged_summary_20260225_161313
+[INFO] Found 30 all_results.pkl files
+[INFO] Parsed 360 (seed,fps) records
+[INFO] Wrote metric-prefixed CSV copies.
+[INFO] Wrote: /home/z5247491/MaaS-Simulation/MaaS-Centralised/Travel_time_equity_seed_opt_runs/merged_summary_20260225_161313/summary_mean_std_ci95.csv
+[INFO] Wrote: /home/z5247491/MaaS-Simulation/MaaS-Centralised/Travel_time_equity_seed_opt_runs/merged_summary_20260225_161313/allocations_mean_std_ci95.csv
+[INFO] Wrote: /home/z5247491/MaaS-Simulation/MaaS-Centralised/Travel_time_equity_seed_opt_runs/merged_summary_20260225_161313/per_seed_fps_table.csv
+[INFO] Allocation heatmaps created
+[INFO] Wrote: /home/z5247491/MaaS-Simulation/MaaS-Centralised/Travel_time_equity_seed_opt_runs/merged_summary_20260225_161313/allocation_stability_by_fps.csv

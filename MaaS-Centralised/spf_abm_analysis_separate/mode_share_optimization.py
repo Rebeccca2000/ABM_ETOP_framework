@@ -1,6 +1,7 @@
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Matern
 from scipy.stats import norm, qmc
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -19,8 +20,8 @@ import time
 import random
 
 # Constants
-SIMULATION_STEPS = 120  # Reduced for faster runs during optimization
-NUM_CPUS = 15  # Adjust based on your system
+SIMULATION_STEPS = 144  # Reduced for faster runs during optimization
+NUM_CPUS = 10  # Adjust based on your system
 
 def calculate_equity_indicator(session, schema=None):
     """
@@ -239,9 +240,9 @@ def calculate_subsidy_usage_statistics(session, fps_value, schema=None):
                     AND table_name = 'subsidy_usage_log'
                 )
             """)
-        table_exists = session.execute(check_table, {'schema': schema}).scalar()
-        if not table_exists:
-            print(f"Warning: subsidy_usage_log table doesn't exist in schema {schema}")
+            table_exists = session.execute(check_table, {'schema': schema}).scalar()
+            if not table_exists:
+                print(f"Warning: subsidy_usage_log table doesn't exist in schema {schema}")
         # Total subsidy usage
         query = text("""
             SELECT SUM(subsidy_amount) as total
@@ -307,10 +308,39 @@ def calculate_subsidy_usage_statistics(session, fps_value, schema=None):
 def run_single_simulation(params):
     """Run a single simulation and calculate equity metrics"""
     pid = os.getpid()
-    print(f"Starting simulation with PID {pid} - FPS: {params.get('fps_value', 'N/A')}")
-        # ADD THESE TWO LINES HERE - seed initialization for consistent results
-    np.random.seed(pid + int(params.get('fps_value', 0)))
-    random.seed(pid + int(params.get('fps_value', 0)))
+    fps_for_seed = int(params.get('fps_value', 0))
+    seed = int(params.get('seed', 0))
+    simulation_id = int(params.get("simulation_id", 0))
+    bo_iteration = int(params.get("bo_iteration", 0))
+    base_seed = int(params.get("base_seed", 12345))
+
+    # Deterministic, reproducible, and unique per evaluation call.
+    final_seed = (
+        base_seed
+        + 10_000_000 * seed
+        + 10_000 * fps_for_seed
+        + 1_000 * bo_iteration
+        + simulation_id
+    )
+
+    print(
+        f"Starting simulation PID {pid} | FPS={fps_for_seed} | "
+        f"seed={seed} | bo_iter={bo_iteration} | sim_id={simulation_id} | "
+        f"final_seed={final_seed}"
+    )
+
+    np.random.seed(final_seed)
+    random.seed(final_seed)
+    try:
+        import torch
+
+        torch.manual_seed(final_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(final_seed)
+    except Exception:
+        # Torch is optional in this workflow.
+        pass
+
     # Create a unique schema name for this process
     schema_name = f"sim_{pid}_{int(time.time())}"
     
@@ -319,13 +349,25 @@ def run_single_simulation(params):
     engine = None
     
     try:
-        # PostgreSQL connection string with appropriate credentials
-        db_connection_string = f"postgresql://z5247491@localhost:15432/postgres"
+        # PostgreSQL connection string with environment-aware defaults
+        db_port = int(os.environ.get("PGPORT", "15433"))
+        db_user = os.environ.get("PGUSER", "z5247491")
+        db_host = os.environ.get("PGHOST", "localhost")
+        db_name = os.environ.get("PGDATABASE", "postgres")
+        db_connection_string = f"postgresql://{db_user}@{db_host}:{db_port}/{db_name}"
         
         # Extract analysis parameters
         fps_value = params.pop('fps_value', 0)
+        seed = int(params.pop('seed', seed))
         fixed_allocations = params.pop('fixed_allocations', None)
         simulation_steps = params.pop('simulation_steps', SIMULATION_STEPS)
+        params.pop('base_seed', None)
+        params.pop('bo_iteration', None)
+        params.pop('simulation_id', None)
+        pilot_steps = params.pop('pilot_steps', None)
+        best_equity = params.pop('early_stop_best_equity', None)
+        margin = params.pop('early_stop_margin', 0.20)
+        exhaust_frac = params.pop('early_stop_exhaust_frac', 0.90)
         
         # Initialize database connection
         from sqlalchemy import create_engine, text
@@ -387,11 +429,45 @@ def run_single_simulation(params):
         params['schema'] = schema_name
         
         # Run simulation with the schema-specific configuration
-        # Remove simulation_id if it exists
-        if 'simulation_id' in params:
-            del params['simulation_id']
         model = MobilityModel(**params)
-        model.run_model(simulation_steps)
+        print("DEBUG subsidy_dataset low:", params.get('subsidy_dataset', {}).get('low', {}))
+
+        # Dominance-based pilot early-stop:
+        # stop only when subsidy is exhausted early and interim equity is clearly dominated.
+        if pilot_steps is not None and best_equity is not None and np.isfinite(best_equity):
+            model.run_model(int(pilot_steps))
+
+            pilot_results = calculate_equity_indicator(session, schema=schema_name)
+            pilot_equity = pilot_results.get('total_equity_indicator', float('inf'))
+
+            pilot_subsidy = calculate_subsidy_usage_statistics(session, fps_value, schema=schema_name)
+            used = pilot_subsidy.get('total_subsidy_used', 0.0)
+            exhausted_early = (fps_value > 0) and (used >= exhaust_frac * float(fps_value))
+
+            if exhausted_early and (pilot_equity > best_equity * (1.0 + margin)):
+                return {
+                    'fps_value': fps_value,
+                    'seed': seed,
+                    'final_seed': final_seed,
+                    'schema_name': schema_name,
+                    'fixed_allocations': fixed_allocations,
+                    'total_equity_indicator': float('inf'),
+                    'low': {'equity_indicator': float('inf'), 'mode_shares': {}},
+                    'middle': {'equity_indicator': float('inf'), 'mode_shares': {}},
+                    'high': {'equity_indicator': float('inf'), 'mode_shares': {}},
+                    'subsidy_usage': pilot_subsidy,
+                    'terminated_early': True,
+                    'termination_reason': (
+                        f'pilot_dominated_exhausted (used={used:.2f}, '
+                        f'pilot_eq={pilot_equity:.6f}, best={best_equity:.6f})'
+                    )
+                }
+
+            remaining_steps = int(simulation_steps) - int(pilot_steps)
+            if remaining_steps > 0:
+                model.run_model(remaining_steps)
+        else:
+            model.run_model(simulation_steps)
         
         # Calculate equity metrics from data in the current schema
         # Modify calculate_equity_indicator to support schema if needed
@@ -402,18 +478,28 @@ def run_single_simulation(params):
         # Add simulation parameters to results
         if results:
             results['fps_value'] = fps_value
+            results['seed'] = seed
+            results['final_seed'] = final_seed
+            results['schema_name'] = schema_name
             results['fixed_allocations'] = fixed_allocations
+            results['terminated_early'] = bool(results.get('terminated_early', False))
+            results['termination_reason'] = str(results.get('termination_reason', ''))
             return results
         else:
             print(f"Warning: No results from simulation with FPS {fps_value}")
             # Return a default result structure to avoid NoneType errors
             return {
                 'fps_value': fps_value,
+                'seed': seed,
+                'final_seed': final_seed,
+                'schema_name': schema_name,
                 'fixed_allocations': fixed_allocations,
                 'total_equity_indicator': 0,
                 'low': {'equity_indicator': 0, 'mode_shares': {}},
                 'middle': {'equity_indicator': 0, 'mode_shares': {}},
-                'high': {'equity_indicator': 0, 'mode_shares': {}}
+                'high': {'equity_indicator': 0, 'mode_shares': {}},
+                'terminated_early': False,
+                'termination_reason': ''
             }
         
     except Exception as e:
@@ -422,11 +508,16 @@ def run_single_simulation(params):
         # Return a default result structure to avoid NoneType errors
         return {
             'fps_value': fps_value if 'fps_value' in locals() else 0,
+            'seed': seed if 'seed' in locals() else 0,
+            'final_seed': final_seed if 'final_seed' in locals() else 0,
+            'schema_name': schema_name if 'schema_name' in locals() else '',
             'fixed_allocations': fixed_allocations if 'fixed_allocations' in locals() else None,
             'total_equity_indicator': 0,
             'low': {'equity_indicator': 0, 'mode_shares': {}},
             'middle': {'equity_indicator': 0, 'mode_shares': {}},
-            'high': {'equity_indicator': 0, 'mode_shares': {}}
+            'high': {'equity_indicator': 0, 'mode_shares': {}},
+            'terminated_early': False,
+            'termination_reason': str(e)
         }
         
     finally:
@@ -459,6 +550,11 @@ def run_sequential_fps_optimization(fps_values, base_parameters, num_cpus=NUM_CP
     print(f"Processing {len(fps_values)} FPS values sequentially with parallel simulations")
     
     results = {}
+    write_partial_results = os.environ.get("WRITE_PARTIAL_RESULTS", "0") == "1"
+    partial_results_dir = os.environ.get("PARTIAL_RESULTS_DIR", "")
+    if write_partial_results and partial_results_dir:
+        os.makedirs(partial_results_dir, exist_ok=True)
+
     # Sort FPS values to ensure sequential processing in ascending order
     fps_values = sorted(fps_values)
     
@@ -471,10 +567,16 @@ def run_sequential_fps_optimization(fps_values, base_parameters, num_cpus=NUM_CP
         
         print(f"Completed FPS={fps_value}, Equity={result['avg_equity']:.4f}")
         
-        # Save partial results after each FPS completes
-        with open(f"partial_results_fps_{fps_value}_{time.strftime('%Y%m%d_%H%M%S')}.pkl", "wb") as f:
-            pickle.dump(results, f)
-    
+        # Optional checkpoints (disabled by default to avoid home quota pressure on HPC)
+        if write_partial_results:
+            partial_name = f"partial_results_fps_{fps_value}_{time.strftime('%Y%m%d_%H%M%S')}.pkl"
+            partial_path = os.path.join(partial_results_dir, partial_name) if partial_results_dir else partial_name
+            try:
+                with open(partial_path, "wb") as f:
+                    pickle.dump(results, f)
+            except OSError as e:
+                print(f"[WARN] Failed to write partial results to {partial_path}: {e}")
+
     return results
 
 def optimize_allocation_parallel(fps_value, base_parameters, num_cpus=NUM_CPUS):
@@ -484,21 +586,28 @@ def optimize_allocation_parallel(fps_value, base_parameters, num_cpus=NUM_CPUS):
     print(f"\nOptimizing subsidy allocation for FPS = {fps_value} with {num_cpus} parallel simulations")
     
     # Define bounds and parameters (same as your current code)
-    bounds = {
-        'low_bike': (0.45, 0.65),      
-        'low_car': (0.5, 0.7),       
-        'low_MaaS_Bundle': (0.45, 0.65),
-        'low_public': (0.45, 0.65),    
-        'middle_bike': (0.25, 0.45),
-        'middle_car': (0.25, 0.45),
-        'middle_MaaS_Bundle': (0.25, 0.45),
-        'middle_public': (0.2, 0.4),
-        'high_bike': (0.05, 0.20),
-        'high_car': (0, 0.15),      
-        'high_MaaS_Bundle': (0.05, 0.20),
-        'high_public': (0.05, 0.20)
-    }
+    # bounds = {
+    #     'low_bike': (0.45, 0.65),      
+    #     'low_car': (0.5, 0.7),       
+    #     'low_MaaS_Bundle': (0.45, 0.65),
+    #     'low_public': (0.45, 0.65),    
+    #     'middle_bike': (0.25, 0.45),
+    #     'middle_car': (0.25, 0.45),
+    #     'middle_MaaS_Bundle': (0.25, 0.45),
+    #     'middle_public': (0.2, 0.4),
+    #     'high_bike': (0.05, 0.20),
+    #     'high_car': (0, 0.15),      
+    #     'high_MaaS_Bundle': (0.05, 0.20),
+    #     'high_public': (0.05, 0.20)
+    # }
     
+    # Define bounds and parameters (unconstrained: allow non-progressive allocations)
+    bounds = {p: (0.0, 0.8) for p in [
+        'low_bike', 'low_car', 'low_MaaS_Bundle', 'low_public',
+        'middle_bike', 'middle_car', 'middle_MaaS_Bundle', 'middle_public',
+        'high_bike', 'high_car', 'high_MaaS_Bundle', 'high_public'
+    ]}
+
     # Set up parameter space and sampling (same as your current code)
     lower_bounds = []
     upper_bounds = []
@@ -513,8 +622,9 @@ def optimize_allocation_parallel(fps_value, base_parameters, num_cpus=NUM_CPUS):
         upper_bounds.append(bounds[param][1])
     
     # Use Latin Hypercube Sampling with specific bounds
-    sampler = qmc.LatinHypercube(d=12, seed=42)
-    X_init = sampler.random(n=10)  
+    sampler = qmc.LatinHypercube(d=len(param_names), seed=42)
+
+    X_init = sampler.random(n=8)  
     X_init = qmc.scale(X_init, lower_bounds, upper_bounds)
     
     # Set up early termination parameters
@@ -550,7 +660,10 @@ def optimize_allocation_parallel(fps_value, base_parameters, num_cpus=NUM_CPUS):
         sim_params['fps_value'] = fps_value
         sim_params['fixed_allocations'] = allocations
         sim_params['simulation_steps'] = SIMULATION_STEPS
-        sim_params['simulation_id'] = i  # Add ID for tracking
+        sim_params['simulation_id'] = i
+        sim_params['bo_iteration'] = 0
+        sim_params['seed'] = int(base_parameters.get('seed', 0))
+        sim_params['base_seed'] = int(base_parameters.get('base_seed', 12345))
         initial_param_sets.append(sim_params)
     
     # Run initial simulations in parallel
@@ -616,7 +729,7 @@ def optimize_allocation_parallel(fps_value, base_parameters, num_cpus=NUM_CPUS):
         gp.fit(X, y)
         
         # Generate candidates for Expected Improvement
-        candidates = sampler.random(n=500)
+        candidates = sampler.random(n=200)
         candidates = qmc.scale(candidates, lower_bounds, upper_bounds)
         
         # Calculate EI for all candidates (minimizing, not maximizing)
@@ -659,6 +772,13 @@ def optimize_allocation_parallel(fps_value, base_parameters, num_cpus=NUM_CPUS):
             sim_params['fixed_allocations'] = allocations
             sim_params['simulation_steps'] = SIMULATION_STEPS
             sim_params['simulation_id'] = i
+            sim_params['bo_iteration'] = iteration + 1
+            sim_params['seed'] = int(base_parameters.get('seed', 0))
+            sim_params['base_seed'] = int(base_parameters.get('base_seed', 12345))
+            sim_params['pilot_steps'] = 20
+            sim_params['early_stop_best_equity'] = best_equity
+            sim_params['early_stop_margin'] = 0.20
+            sim_params['early_stop_exhaust_frac'] = 0.90
             iteration_param_sets.append(sim_params)
         
         # Run simulations in parallel
@@ -958,7 +1078,11 @@ def visualize_results(results, output_dir):
                                 'income_level': income_level,
                                 'mode': mode,
                                 'mode_share': share,
-                                'equity_score': full_results[income_level].get('equity_score', 0)
+                                'equity_score': full_results[income_level].get(
+                                'equity_indicator',
+                                full_results[income_level].get('equity_score', 0)
+                            )
+
                             })
         
         if mode_data:
@@ -1210,13 +1334,30 @@ def visualize_subsidy_usage(results, output_dir):
 
 def main():
     """Main function to run the complete equity optimization analysis"""
+    global NUM_CPUS, SIMULATION_STEPS
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--seed0", type=int, default=0, help="Seed index for this optimization run")
+    parser.add_argument("--out_dir", type=str, default=None, help="Output directory for this run")
+    parser.add_argument("--num_cpus", type=int, default=NUM_CPUS, help="Parallel CPUs within this job")
+    parser.add_argument("--steps", type=int, default=SIMULATION_STEPS, help="Simulation steps per evaluation")
+    args = parser.parse_args()
+
+    NUM_CPUS = args.num_cpus
+    SIMULATION_STEPS = args.steps
+    optimizer_seed = args.seed0
+    base_seed = 12345
+
     # Define base parameters
-    print(f"Starting parallel optimization with {NUM_CPUS} CPUs")
+    print(
+        f"Optimizer seed0={optimizer_seed}, base_seed={base_seed}, "
+        f"NUM_CPUS={NUM_CPUS}, STEPS={SIMULATION_STEPS}"
+    )
 
     base_parameters = {
-        'num_commuters': 130,
-        'grid_width': 85,
-        'grid_height': 85,
+        'num_commuters': 200,
+        'grid_width': 100,
+        'grid_height': 100,
         'data_income_weights': [0.5, 0.3, 0.2],
         'data_health_weights': [0.9, 0.1],
         'data_payment_weights': [0.8, 0.2],
@@ -1257,7 +1398,7 @@ def main():
             'alpha': 0.10,# Sensitivity coefficient
             'delta': 0.5 # Reduction factor for subscription model
         },
-        'BACKGROUND_TRAFFIC_AMOUNT': 120,
+        'BACKGROUND_TRAFFIC_AMOUNT': 200,
         'CONGESTION_ALPHA': 0.03,
         'CONGESTION_BETA': 1.5,  
         'CONGESTION_CAPACITY': 10,
@@ -1271,21 +1412,30 @@ def main():
         'bike_share2_capacity': 12,
         'bike_share2_price': 3 
     }
+    base_parameters['seed'] = optimizer_seed
+    base_parameters['base_seed'] = base_seed
     
     # Define FPS values to analyze (using a logarithmic scale for better coverage)
     # Start with a smaller set of values for testing
     # Replace your current fps_values with this more focused sampling
-    fps_values = [1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 6000, 7000, 8000]
+    fps_values = [3500, 4500, 5500, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 15000]
     # For actual analysis, use a more comprehensive set
     # fps_values = np.logspace(0, 5, 10).astype(int)  # 10 points from 1 to 100,000 on log scale
 
+    # Save results
+    if args.out_dir is None:
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        output_dir = f"mae_equity_results_{timestamp}"
+    else:
+        output_dir = args.out_dir
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Persist base parameters so fixed-policy seed evaluation can be reproduced.
+    with open(os.path.join(output_dir, "base_parameters.pkl"), "wb") as f:
+        pickle.dump(base_parameters, f)
+
     # Run parallel optimization
     results = run_sequential_fps_optimization(fps_values, base_parameters, num_cpus=NUM_CPUS)
-    
-    # Save results
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    output_dir = f"mae_equity_results_{timestamp}"
-    os.makedirs(output_dir, exist_ok=True)
     
     # Save individual FPS results
     for fps, result in results.items():

@@ -1,0 +1,55 @@
+Optimal FPS Value: 4500.0
+Minimum Total System Travel Time: 7129.00 minutes
+Average Trip Time: 19.43 minutes
+Total Number of Trips: 367.0
+
+Travel Time Breakdown by Income Level:
+  Low Income:
+    Total Travel Time: 3788.00 minutes (53.1%)
+    Average Trip Time: 24.44 minutes
+    Number of Trips: 155.0
+  Middle Income:
+    Total Travel Time: 1950.00 minutes (27.4%)
+    Average Trip Time: 15.85 minutes
+    Number of Trips: 123.0
+  High Income:
+    Total Travel Time: 1391.00 minutes (19.5%)
+    Average Trip Time: 15.63 minutes
+    Number of Trips: 89.0
+
+Travel Time Breakdown by Mode:
+  public:
+    Total Travel Time: 3806.00 minutes (53.4%)
+    Number of Trips: 215.0
+  walk:
+    Total Travel Time: 759.00 minutes (10.6%)
+    Number of Trips: 12.0
+  UberLike2:
+    Total Travel Time: 684.00 minutes (9.6%)
+    Number of Trips: 59.0
+  BikeShare2:
+    Total Travel Time: 623.00 minutes (8.7%)
+    Number of Trips: 12.0
+  UberLike1:
+    Total Travel Time: 689.00 minutes (9.7%)
+    Number of Trips: 57.0
+  BikeShare1:
+    Total Travel Time: 533.00 minutes (7.5%)
+    Number of Trips: 10.0
+  MaaS Bundle:
+    Total Travel Time: 35.00 minutes (0.5%)
+    Number of Trips: 2.0
+
+Optimal Subsidy Allocations:
+  high_MaaS_Bundle: 0.0925
+  high_bike: 0.4419
+  high_car: 0.0887
+  high_public: 0.7821
+  low_MaaS_Bundle: 0.6143
+  low_bike: 0.6050
+  low_car: 0.5956
+  low_public: 0.7980
+  middle_MaaS_Bundle: 0.6966
+  middle_bike: 0.5247
+  middle_car: 0.2127
+  middle_public: 0.5972

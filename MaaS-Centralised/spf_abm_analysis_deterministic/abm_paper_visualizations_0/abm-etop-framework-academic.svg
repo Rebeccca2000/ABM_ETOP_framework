@@ -1,0 +1,79 @@
+<svg width="800" height="350" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="800" height="350" fill="#ffffff" rx="10" ry="10" stroke="#e0e0e0" stroke-width="2"/>
+  
+  <!-- Title -->
+  <text x="400" y="40" font-family="Arial" font-size="20" text-anchor="middle" font-weight="bold">ABM-ETOP Framework Architecture</text>
+  <text x="400" y="65" font-family="Arial" font-size="14" text-anchor="middle" font-style="italic">Agent-Based Model for Equity-Transportation Optimization and Policy</text>
+  
+  <!-- Boxes -->
+  <!-- Agent Layer -->
+  <rect x="60" y="120" width="160" height="100" rx="6" ry="6" fill="#f0f7ff" stroke="#bbd6ff" stroke-width="1.5"/>
+  <text x="140" y="145" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">Agent Layer</text>
+  <text x="140" y="170" font-family="Arial" font-size="12" text-anchor="middle">Commuters, Providers</text>
+  <text x="140" y="190" font-family="Arial" font-size="12" text-anchor="middle">System Coordinator</text>
+  
+  <!-- Agent icons - more abstract/academic -->
+  <circle cx="100" cy="210" r="8" fill="#4472c4"/>
+  <circle cx="120" cy="210" r="8" fill="#4472c4"/>
+  <circle cx="140" cy="210" r="8" fill="#4472c4"/>
+  <line x1="100" y1="210" x2="120" y2="210" stroke="#4472c4" stroke-width="2"/>
+  <line x1="120" y1="210" x2="140" y2="210" stroke="#4472c4" stroke-width="2"/>
+  <line x1="140" y1="210" x2="160" y2="210" stroke="#4472c4" stroke-width="2" stroke-dasharray="2,2"/>
+  
+  <!-- Policy Intervention -->
+  <rect x="290" y="120" width="160" height="100" rx="6" ry="6" fill="#fff6e9" stroke="#ffd699" stroke-width="1.5"/>
+  <text x="370" y="145" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">Policy Intervention</text>
+  <text x="370" y="170" font-family="Arial" font-size="12" text-anchor="middle">Fixed Pool Subsidy</text>
+  <text x="370" y="190" font-family="Arial" font-size="12" text-anchor="middle">Allocation Framework</text>
+  
+  <!-- Policy icons - more academic -->
+  <rect x="330" y="200" width="16" height="16" fill="#ed7d31"/>
+  <rect x="350" y="200" width="16" height="16" fill="#ed7d31"/>
+  <rect x="370" y="200" width="16" height="16" fill="#ed7d31"/>
+  <rect x="390" y="200" width="16" height="16" fill="#ed7d31" fill-opacity="0.5"/>
+  <line x1="330" y1="208" x2="406" y2="208" stroke="#ed7d31" stroke-width="1" stroke-dasharray="1,1"/>
+  
+  <!-- System Outcomes -->
+  <rect x="520" y="120" width="160" height="100" rx="6" ry="6" fill="#ebf7eb" stroke="#c5e0c5" stroke-width="1.5"/>
+  <text x="600" y="145" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">System Outcomes</text>
+  <text x="600" y="170" font-family="Arial" font-size="12" text-anchor="middle">Mode Share Equity</text>
+  <text x="600" y="190" font-family="Arial" font-size="12" text-anchor="middle">Travel Time Equity</text>
+  
+  <!-- Chart icon - academic style -->
+  <rect x="560" y="200" width="80" height="15" fill="none" stroke="#70ad47" stroke-width="1"/>
+  <path d="M 560,215 L 570,210 L 580,212 L 590,200 L 600,205 L 610,195 L 620,210 L 630,205 L 640,215" fill="none" stroke="#70ad47" stroke-width="1.5"/>
+  
+  <!-- Optimization Process -->
+  <rect x="650" y="250" width="120" height="75" rx="6" ry="6" fill="#e9e9f9" stroke="#c5c5eb" stroke-width="1.5"/>
+  <text x="710" y="275" font-family="Arial" font-size="16" text-anchor="middle" font-weight="bold">Optimization</text>
+  <text x="710" y="295" font-family="Arial" font-size="12" text-anchor="middle">Bayesian Process</text>
+  <text x="710" y="315" font-family="Arial" font-size="12" text-anchor="middle">Policy Update</text>
+  
+  <!-- Target/optimization icon -->
+  <circle cx="710" cy="240" r="5" fill="#8064a2" stroke="none"/>
+  <circle cx="710" cy="240" r="10" fill="none" stroke="#8064a2" stroke-width="1"/>
+  <circle cx="710" cy="240" r="15" fill="none" stroke="#8064a2" stroke-width="0.5"/>
+  
+  <!-- Forward Arrows with labels -->
+  <line x1="220" y1="170" x2="280" y2="170" stroke="#505050" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="250" y="160" font-family="Arial" font-size="11" text-anchor="middle" fill="#505050">generates</text>
+  
+  <line x1="450" y1="170" x2="510" y2="170" stroke="#505050" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="480" y="160" font-family="Arial" font-size="11" text-anchor="middle" fill="#505050">affects</text>
+  
+  <line x1="600" y1="220" x2="600" y2="265" stroke="#505050" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <line x1="600" y1="265" x2="650" y2="265" stroke="#505050" stroke-width="1.5"/>
+  <text x="600" y="245" font-family="Arial" font-size="11" text-anchor="middle" fill="#505050">evaluates</text>
+  
+  <!-- Feedback Loop -->
+  <path d="M 650 285 L 140 285 L 140 230" stroke="#505050" stroke-width="1.5" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="370" y="305" font-family="Arial" font-size="12" text-anchor="middle" font-style="italic" fill="#505050">Feedback Loop: Optimized Policy Parameters</text>
+  
+  <!-- Arrow definition -->
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#505050"/>
+    </marker>
+  </defs>
+</svg>

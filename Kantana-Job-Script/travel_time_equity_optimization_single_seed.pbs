@@ -1,0 +1,109 @@
+#!/bin/bash
+#PBS -N tte_opt_one
+#PBS -l select=1:ncpus=10:mem=48gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -m ae
+#PBS -M z5247491@unsw.edu.au
+
+# Submit from MaaS-Centralised:
+#   cd ~/MaaS-Simulation/MaaS-Centralised
+#   qsub -v OUT_BASE=Travel_time_equity_seed_opt_runs,SEED=0,NUM_CPUS=10,STEPS=144 ../Kantana-Job-Script/travel_time_equity_optimization_single_seed.pbs
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+
+module load python/3.11.3
+module load postgresql/14.0
+
+pip install --user psycopg2-binary
+
+if [ -z "$OUT_BASE" ]; then
+    echo "OUT_BASE is not set. Submit with -v OUT_BASE=Travel_time_equity_seed_opt_runs,SEED=<idx>"
+    exit 1
+fi
+
+if [ -z "$SEED" ]; then
+    echo "SEED is not set. Submit with -v OUT_BASE=...,SEED=<idx>"
+    exit 1
+fi
+
+case "$SEED" in
+    ''|*[!0-9]*)
+        echo "SEED must be a non-negative integer, got: $SEED"
+        exit 1
+        ;;
+esac
+
+NUM_CPUS="${NUM_CPUS:-10}"
+STEPS="${STEPS:-144}"
+
+# Unique PostgreSQL port per seed (travel-time metric range)
+BASEPORT=15533
+export PGPORT=$((BASEPORT + SEED))
+TMP_BASE="/tmp/${USER}/maas_pg"
+mkdir -p "$TMP_BASE"
+export PGDATA="${TMP_BASE}/postgres_${PBS_JOBID}_${SEED}_${PGPORT}"
+export PGHOST=localhost
+export PGDATABASE=postgres
+export PGLOG="${TMP_BASE}/pg_start_${PBS_JOBID}_${SEED}_${PGPORT}.log"
+export WRITE_PARTIAL_RESULTS=0
+export PARTIAL_RESULTS_DIR="${TMP_BASE}/partial_${PBS_JOBID}_${SEED}"
+
+cleanup_pg() {
+    if [ -n "$PGDATA" ] && [ -d "$PGDATA" ]; then
+        pg_ctl -D "$PGDATA" stop -m fast >/dev/null 2>&1 || true
+    fi
+    if [[ "$PGDATA" == /tmp/${USER}/maas_pg/* ]]; then
+        rm -rf "$PGDATA" || true
+    fi
+}
+trap cleanup_pg EXIT
+
+# Safety check for deletion
+if [[ "$PGDATA" == /tmp/${USER}/maas_pg/* ]]; then
+    rm -rf "$PGDATA"
+else
+    echo "Unexpected PGDATA path: $PGDATA - skipping removal for safety"
+    exit 1
+fi
+
+mkdir -p "$PGDATA"
+initdb -D "$PGDATA"
+
+cat > "$PGDATA/postgresql.conf" << EOF
+listen_addresses = 'localhost'
+port = ${PGPORT}
+max_connections = 450
+shared_buffers = 1GB
+work_mem = 64MB
+maintenance_work_mem = 256MB
+dynamic_shared_memory_type = posix
+EOF
+
+pg_ctl -D "$PGDATA" -o "-p ${PGPORT}" start -l "$PGLOG"
+
+# Wait for Postgres readiness
+for _ in $(seq 1 30); do
+    if pg_isready -h "$PGHOST" -p "$PGPORT" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+if ! pg_isready -h "$PGHOST" -p "$PGPORT" >/dev/null 2>&1; then
+    echo "PostgreSQL failed readiness check on port $PGPORT"
+    exit 1
+fi
+
+RUN_TAG="opt_seed_array_${PBS_JOBID}"
+OUT_DIR="${OUT_BASE}/${RUN_TAG}/seed_${SEED}"
+mkdir -p "$OUT_DIR"
+
+python ./spf_abm_analysis_separate/travel_time_equity_optimization.py \
+  --seed0 "${SEED}" \
+  --out_dir "${OUT_DIR}" \
+  --num_cpus "${NUM_CPUS}" \
+  --steps "${STEPS}"
+EXIT_CODE=$?
+
+exit $EXIT_CODE

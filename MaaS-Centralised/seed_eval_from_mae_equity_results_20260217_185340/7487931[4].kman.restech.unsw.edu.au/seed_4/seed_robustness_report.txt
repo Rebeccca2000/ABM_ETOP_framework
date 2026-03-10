@@ -1,0 +1,9 @@
+Seed Robustness Evaluation (Fixed allocations per FPS)
+=====================================================
+
+Optimization source folder: mae_equity_results_20260217_185340
+K seeds: 1 (seed0=4)
+Simulation steps per run: 120
+
+Summary table: summary_mean_std_ci95.csv
+Raw per-seed table: raw_seed_results_all_fps.csv

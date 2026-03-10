@@ -1,0 +1,80 @@
+#!/bin/bash
+#PBS -N mode_share_seed_eval
+#PBS -l select=1:ncpus=10:mem=48gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -m ae
+#PBS -M z5247491@unsw.edu.au
+#PBS -J 0-9
+
+# Submit from MaaS-Centralised:
+#   cd ~/MaaS-Simulation/MaaS-Centralised
+#   qsub -v OPT_DIR=mae_equity_results_YYYYMMDD_HHMMSS,STEPS=144 ../Kantana-Job-Script/mode_share_seed_eval_array.pbs
+
+cd "$PBS_O_WORKDIR"
+
+module load python/3.11.3
+module load postgresql/14.0
+
+if [ -z "$OPT_DIR" ]; then
+    echo "OPT_DIR is not set. Submit with -v OPT_DIR=mae_equity_results_YYYYMMDD_HHMMSS"
+    exit 1
+fi
+
+STEPS="${STEPS:-144}"
+
+# Unique PostgreSQL port per array index.
+BASEPORT=15433
+export PGPORT=$((BASEPORT + PBS_ARRAY_INDEX))
+export PGDATA="$HOME/postgres_data_${PGPORT}"
+export PGHOST=localhost
+export PGDATABASE=postgres
+
+if [ "$PGDATA" = "$HOME/postgres_data_${PGPORT}" ]; then
+    rm -rf "$PGDATA"
+else
+    echo "Unexpected PGDATA path: $PGDATA - skipping removal for safety"
+    exit 1
+fi
+
+mkdir -p "$PGDATA"
+initdb -D "$PGDATA"
+
+cat > "$PGDATA/postgresql.conf" << EOF
+listen_addresses = 'localhost'
+port = ${PGPORT}
+max_connections = 450
+shared_buffers = 1GB
+work_mem = 64MB
+maintenance_work_mem = 256MB
+dynamic_shared_memory_type = posix
+EOF
+
+pg_ctl -D "$PGDATA" -o "-p ${PGPORT}" start -l "$HOME/pg_start_${PGPORT}.log"
+
+for _ in $(seq 1 30); do
+    if pg_isready -h "$PGHOST" -p "$PGPORT" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+if ! pg_isready -h "$PGHOST" -p "$PGPORT" >/dev/null 2>&1; then
+    echo "PostgreSQL failed readiness check on port $PGPORT"
+    exit 1
+fi
+
+SEED=${PBS_ARRAY_INDEX}
+OUT_DIR="seed_eval_from_${OPT_DIR}/${PBS_JOBID}/seed_${SEED}"
+
+python ./spf_abm_analysis_separate/evaluate_mode_share_seeds.py \
+  --opt_dir "${OPT_DIR}" \
+  --k 1 \
+  --seed0 "${SEED}" \
+  --steps "${STEPS}" \
+  --within_job_cpus 1 \
+  --out "${OUT_DIR}"
+EXIT_CODE=$?
+
+pg_ctl -D "$PGDATA" stop -m fast
+exit $EXIT_CODE

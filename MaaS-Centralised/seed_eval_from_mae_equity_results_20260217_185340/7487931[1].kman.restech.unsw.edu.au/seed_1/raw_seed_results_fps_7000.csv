@@ -1,0 +1,2 @@
+fps_value,seed,final_seed,schema_name,total_equity_indicator,equity_low,equity_middle,equity_high,budget_used_pct,total_subsidy_used,terminated_early,termination_reason
+7000.0,1,119345,sim_87278_1771385017,0.6576479494352772,0.16755484884756275,0.25393843450139064,0.23615466608632363,63.21535553226153,4425.074887258307,False,

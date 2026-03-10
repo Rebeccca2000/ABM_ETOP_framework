@@ -1,0 +1,21 @@
+Optimal FPS Value: 9500.0
+Optimal Sum Equity Score: 0.2560
+
+Optimal Subsidy Allocations:
+  high_MaaS_Bundle: 0.3055
+  high_bike: 0.6993
+  high_car: 0.0984
+  high_public: 0.7961
+  low_MaaS_Bundle: 0.2924
+  low_bike: 0.6389
+  low_car: 0.7221
+  low_public: 0.4328
+  middle_MaaS_Bundle: 0.0569
+  middle_bike: 0.7872
+  middle_car: 0.5265
+  middle_public: 0.2699
+
+Equity Score by Income Level:
+  Low: 0.1230
+  Middle: 0.0816
+  High: 0.0513

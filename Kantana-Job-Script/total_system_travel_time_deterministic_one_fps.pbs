@@ -1,0 +1,104 @@
+#!/bin/bash
+#PBS -N tstt_det_1fps
+#PBS -l select=1:ncpus=2:mem=24gb
+#PBS -l walltime=06:00:00
+#PBS -j oe
+#PBS -m ae
+#PBS -M z5247491@unsw.edu.au
+set -euo pipefail
+
+# Submit from MaaS-Centralised:
+#   cd ~/MaaS-Simulation/MaaS-Centralised
+#   qsub -v SEED=0,FPS_VALUES=3500,STEPS=144,NUM_CPUS=1,OUT_BASE=det_total_system_travel_time_runs \
+#     ../Kantana-Job-Script/total_system_travel_time_deterministic_one_fps.pbs
+#
+# Useful checks:
+#   qstat -u z5247491
+#   qstat -f <job_id>
+
+cd "$PBS_O_WORKDIR"
+
+module load python/3.11.3
+module load postgresql/14.0
+
+if ! python -c "import psycopg2" >/dev/null 2>&1; then
+    python -m pip install --user psycopg2-binary
+fi
+
+SEED="${SEED:-0}"
+FPS_VALUES="${FPS_VALUES:-3500}"
+STEPS="${STEPS:-144}"
+NUM_CPUS="${NUM_CPUS:-1}"
+OUT_BASE="${OUT_BASE:-det_total_system_travel_time_runs}"
+mkdir -p "$OUT_BASE"
+
+BASEPORT=15433
+JOB_SUFFIX="$(echo "${PBS_JOBID:-0}" | tr -cd '0-9' | tail -c 3)"
+if [ -z "$JOB_SUFFIX" ]; then
+    JOB_SUFFIX="0"
+fi
+
+export PGPORT=$((BASEPORT + 10#$JOB_SUFFIX))
+export PGHOST=localhost
+export PGDATABASE=postgres
+
+TMP_BASE="/tmp/${USER}/maas_pg"
+mkdir -p "$TMP_BASE"
+export PGDATA="${TMP_BASE}/postgres_${PBS_JOBID:-manual}_${SEED}_${PGPORT}"
+export PGLOG="${TMP_BASE}/pg_start_${PBS_JOBID:-manual}_${SEED}_${PGPORT}.log"
+
+cleanup_pg() {
+    if [ -n "${PGDATA:-}" ] && [ -d "$PGDATA" ]; then
+        pg_ctl -D "$PGDATA" stop -m fast >/dev/null 2>&1 || true
+    fi
+    if [[ "${PGDATA:-}" == /tmp/${USER}/maas_pg/* ]]; then
+        rm -rf "$PGDATA" || true
+    fi
+}
+trap cleanup_pg EXIT
+
+if [[ "$PGDATA" == /tmp/${USER}/maas_pg/* ]]; then
+    rm -rf "$PGDATA" || true
+else
+    echo "Unexpected PGDATA path: $PGDATA"
+    exit 1
+fi
+
+mkdir -p "$PGDATA"
+initdb -D "$PGDATA" >/dev/null
+
+cat > "$PGDATA/postgresql.conf" << EOF
+listen_addresses = 'localhost'
+port = ${PGPORT}
+max_connections = 250
+shared_buffers = 512MB
+work_mem = 32MB
+maintenance_work_mem = 128MB
+dynamic_shared_memory_type = posix
+EOF
+
+pg_ctl -D "$PGDATA" -o "-p ${PGPORT}" start -l "$PGLOG"
+
+for _ in $(seq 1 30); do
+    if pg_isready -h "$PGHOST" -p "$PGPORT" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+if ! pg_isready -h "$PGHOST" -p "$PGPORT" >/dev/null 2>&1; then
+    echo "PostgreSQL failed readiness check on port $PGPORT"
+    exit 1
+fi
+
+RUN_TAG="det_onefps_${PBS_JOBID:-manual}"
+OUT_DIR="${OUT_BASE}/${RUN_TAG}/seed_${SEED}"
+mkdir -p "$OUT_DIR"
+
+python ./spf_abm_analysis_deterministic/total_system_travel_time_optimization.py \
+  --deterministic_mode \
+  --seed0 "${SEED}" \
+  --out_dir "${OUT_DIR}" \
+  --num_cpus "${NUM_CPUS}" \
+  --steps "${STEPS}" \
+  --fps_values "${FPS_VALUES}"

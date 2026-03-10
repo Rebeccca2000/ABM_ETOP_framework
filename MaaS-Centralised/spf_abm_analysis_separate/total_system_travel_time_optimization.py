@@ -1,6 +1,7 @@
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Matern
 from scipy.stats import norm, qmc
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -19,8 +20,8 @@ import time
 import random
 
 # Constants
-SIMULATION_STEPS = 120  # Reduced for faster runs during optimization
-NUM_CPUS = 15  # Adjust based on your system
+SIMULATION_STEPS = 144  # Reduced for faster runs during optimization
+NUM_CPUS = 10  # Adjust based on your system
 
 def calculate_total_system_travel_time(session, schema=None):
     """
@@ -304,137 +305,214 @@ def calculate_subsidy_usage_statistics(session, fps_value, schema=None):
         return default_results
 
 def run_single_simulation(params):
-    """Run a single simulation and calculate total system travel time metrics"""
+    """Run a single simulation and calculate total system travel time (ModeShare-plumbing compatible)."""
     pid = os.getpid()
-    print(f"Starting simulation with PID {pid} - FPS: {params.get('fps_value', 'N/A')}")
-    
-    # Seed initialization for consistent results
-    np.random.seed(pid + int(params.get('fps_value', 0)))
-    random.seed(pid + int(params.get('fps_value', 0)))
-    
-    # Create a unique schema name for this process
+
+    fps_for_seed = int(params.get("fps_value", 0))
+    seed = int(params.get("seed", 0))
+    simulation_id = int(params.get("simulation_id", 0))
+    bo_iteration = int(params.get("bo_iteration", 0))
+    base_seed = int(params.get("base_seed", 12345))
+
+    final_seed = (
+        base_seed
+        + 10_000_000 * seed
+        + 10_000 * fps_for_seed
+        + 1_000 * bo_iteration
+        + simulation_id
+    )
+
+    print(
+        f"Starting simulation PID {pid} | FPS={fps_for_seed} | "
+        f"seed={seed} | bo_iter={bo_iteration} | sim_id={simulation_id} | "
+        f"final_seed={final_seed}"
+    )
+
+    np.random.seed(final_seed)
+    random.seed(final_seed)
+    try:
+        import torch
+        torch.manual_seed(final_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(final_seed)
+    except Exception:
+        pass
+
     schema_name = f"sim_{pid}_{int(time.time())}"
-    
-    # Initialize session and engine variables outside try block
     session = None
     engine = None
-    
+
+    _meta = {
+        "simulation_id": simulation_id,
+        "bo_iteration": bo_iteration,
+        "seed": seed,
+        "base_seed": base_seed,
+        "final_seed": final_seed,
+    }
+
+    def _empty_income_block(avg_value=0.0):
+        return {
+            "total_travel_time": 0.0,
+            "trip_count": 0,
+            "avg_trip_time": float(avg_value),
+            "percentage_of_total": 0.0,
+        }
+
     try:
-        # PostgreSQL connection string with appropriate credentials
-        db_connection_string = f"postgresql://z5247491@localhost:15437/postgres"
-        
-        # Extract analysis parameters
-        fps_value = params.pop('fps_value', 0)
-        fixed_allocations = params.pop('fixed_allocations', None)
-        simulation_steps = params.pop('simulation_steps', SIMULATION_STEPS)
-        
-        # Initialize database connection
-        from sqlalchemy import create_engine, text
+        db_port = int(os.environ.get("PGPORT", "15433"))
+        db_user = os.environ.get("PGUSER", "z5247491")
+        db_host = os.environ.get("PGHOST", "localhost")
+        db_name = os.environ.get("PGDATABASE", "postgres")
+        db_connection_string = f"postgresql://{db_user}@{db_host}:{db_port}/{db_name}"
+
+        fps_value = float(params.pop("fps_value", 0))
+        fixed_allocations = params.pop("fixed_allocations", None)
+        simulation_steps = int(params.pop("simulation_steps", SIMULATION_STEPS))
+
+        params.pop("seed", None)
+        params.pop("base_seed", None)
+        params.pop("bo_iteration", None)
+        params.pop("simulation_id", None)
+
+        pilot_steps = params.pop("pilot_steps", None)
+        best_obj = params.pop("early_stop_best_equity", None)
+        margin = float(params.pop("early_stop_margin", 0.20))
+        exhaust_frac = float(params.pop("early_stop_exhaust_frac", 0.90))
+
         engine = create_engine(db_connection_string)
-        
-        # Create a unique schema for this process
+
         with engine.connect() as connection:
             connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema_name}"))
-            connection.commit()  # Make sure to commit the schema creation
-        
-        # Create session with the specified schema
+            connection.commit()
+
         from sqlalchemy.orm import sessionmaker
         Session = sessionmaker(bind=engine)
         session = Session()
-        
-        # Set the search path to use our schema
+
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
             connection.commit()
 
-        # Reset the database tables with the schema parameter
         reset_db_params = {k: params[k] for k in [
-            'uber_like1_capacity', 'uber_like1_price',
-            'uber_like2_capacity', 'uber_like2_price',
-            'bike_share1_capacity', 'bike_share1_price',
-            'bike_share2_capacity', 'bike_share2_price'
+            "uber_like1_capacity", "uber_like1_price",
+            "uber_like2_capacity", "uber_like2_price",
+            "bike_share1_capacity", "bike_share1_price",
+            "bike_share2_capacity", "bike_share2_price"
         ]}
-        
-        # Pass the schema parameter to reset_database
-        reset_database(
-            engine=engine, 
-            session=session, 
-            schema=schema_name,
-            **reset_db_params
-        )
-        
-        # Set up subsidy configuration
+        reset_database(engine=engine, session=session, schema=schema_name, **reset_db_params)
+
         if fixed_allocations:
-            # Create subsidy dataset
             subsidy_dataset = {}
-            for income_level in ['low', 'middle', 'high']:
+            for income_level in ["low", "middle", "high"]:
                 subsidy_dataset[income_level] = {}
-                for mode in ['bike', 'car', 'MaaS_Bundle', 'public', 'walk']:
+                for mode in ["bike", "car", "MaaS_Bundle", "public", "walk"]:
                     key = f"{income_level}_{mode}"
-                    if key in fixed_allocations:
-                        subsidy_dataset[income_level][mode] = fixed_allocations[key]
-                    else:
-                        # Default allocation if not specified
-                        subsidy_dataset[income_level][mode] = 0.1
-                        
-            params['subsidy_dataset'] = subsidy_dataset
-            params['subsidy_config'] = SubsidyPoolConfig('daily', float(fps_value))
-        else:
-            # Regular FPS
-            params['subsidy_config'] = SubsidyPoolConfig('daily', float(fps_value))
-        
-        # Configure the model with schema info
-        params['db_connection_string'] = db_connection_string
-        params['schema'] = schema_name
-        
-        # Run simulation with the schema-specific configuration
-        # Remove simulation_id if it exists
-        if 'simulation_id' in params:
-            del params['simulation_id']
+                    subsidy_dataset[income_level][mode] = float(fixed_allocations.get(key, 0.1))
+            params["subsidy_dataset"] = subsidy_dataset
+
+        params["subsidy_config"] = SubsidyPoolConfig("daily", float(fps_value))
+        params["db_connection_string"] = db_connection_string
+        params["schema"] = schema_name
+
         model = MobilityModel(**params)
-        model.run_model(simulation_steps)
-        
-        # Calculate total system travel time metrics from data in the current schema
-        results = calculate_total_system_travel_time(session, schema=schema_name)
-        
-        # Add subsidy usage statistics
-        subsidy_stats = calculate_subsidy_usage_statistics(session, fps_value, schema=schema_name)
-        results['subsidy_usage'] = subsidy_stats
-        
-        # Add simulation parameters to results
-        if results:
-            results['fps_value'] = fps_value
-            results['fixed_allocations'] = fixed_allocations
-            return results
+
+        # Pilot early-stop: objective = total_system_travel_time (lower better)
+        if pilot_steps is not None and best_obj is not None and np.isfinite(best_obj):
+            model.run_model(int(pilot_steps))
+
+            pilot_results = calculate_total_system_travel_time(session, schema=schema_name)
+            pilot_metric = float(pilot_results.get("total_system_travel_time", float("inf")))
+
+            pilot_subsidy = calculate_subsidy_usage_statistics(session, fps_value, schema=schema_name)
+            used = float(pilot_subsidy.get("total_subsidy_used", 0.0))
+            exhausted_early = (fps_value > 0) and (used >= exhaust_frac * float(fps_value))
+
+            if exhausted_early and (pilot_metric > float(best_obj) * (1.0 + margin)):
+                return {
+                    "fps_value": float(fps_value),
+                    "schema_name": schema_name,
+                    "fixed_allocations": fixed_allocations,
+                    "terminated_early": True,
+                    "termination_reason": (
+                        f"pilot_dominated_exhausted (used={used:.2f}, "
+                        f"pilot_metric={pilot_metric:.6f}, best={float(best_obj):.6f})"
+                    ),
+                    "subsidy_usage": pilot_subsidy,
+                    "total_system_travel_time": float("inf"),
+                    "total_trips": 0,
+                    "avg_trip_time": float("inf"),
+                    "avg_equity": float("inf"),
+                    "equity_scores": {
+                        "low": float("inf"),
+                        "middle": float("inf"),
+                        "high": float("inf"),
+                    },
+                    "low": _empty_income_block(avg_value=float("inf")),
+                    "middle": _empty_income_block(avg_value=float("inf")),
+                    "high": _empty_income_block(avg_value=float("inf")),
+                    "income_breakdown": {
+                        "low": _empty_income_block(avg_value=float("inf")),
+                        "middle": _empty_income_block(avg_value=float("inf")),
+                        "high": _empty_income_block(avg_value=float("inf")),
+                    },
+                    "mode_breakdown": {},
+                    **_meta,
+                }
+
+            remaining_steps = int(simulation_steps) - int(pilot_steps)
+            if remaining_steps > 0:
+                model.run_model(remaining_steps)
         else:
-            print(f"Warning: No results from simulation with FPS {fps_value}")
-            # Return a default result structure to avoid NoneType errors
-            return {
-                'fps_value': fps_value,
-                'fixed_allocations': fixed_allocations,
-                'total_system_travel_time': 0,
-                'total_trips': 0,
-                'avg_trip_time': 0
-            }
-        
-    except Exception as e:
-        print(f"Error in simulation {pid}: {str(e)}")
-        traceback.print_exc()
-        # Return a default result structure to avoid NoneType errors
-        return {
-            'fps_value': fps_value if 'fps_value' in locals() else 0,
-            'fixed_allocations': fixed_allocations if 'fixed_allocations' in locals() else None,
-            'total_system_travel_time': 0,
-            'total_trips': 0,
-            'avg_trip_time': 0
+            model.run_model(simulation_steps)
+
+        results = calculate_total_system_travel_time(session, schema=schema_name)
+        subsidy_stats = calculate_subsidy_usage_statistics(session, fps_value, schema=schema_name)
+        results["subsidy_usage"] = subsidy_stats
+
+        results["fps_value"] = float(fps_value)
+        results["schema_name"] = schema_name
+        results["fixed_allocations"] = fixed_allocations
+        results["terminated_early"] = bool(results.get("terminated_early", False))
+        results["termination_reason"] = str(results.get("termination_reason", ""))
+        results["avg_equity"] = float(results.get("total_system_travel_time", np.nan))
+        results["equity_scores"] = {
+            "low": float(results.get("low", {}).get("avg_trip_time", np.nan)),
+            "middle": float(results.get("middle", {}).get("avg_trip_time", np.nan)),
+            "high": float(results.get("high", {}).get("avg_trip_time", np.nan)),
         }
-        
+        results.update(_meta)
+
+        return results
+
+    except Exception as e:
+        print(f"Error in simulation PID {pid}: {str(e)}")
+        traceback.print_exc()
+        return {
+            "fps_value": float(params.get("fps_value", 0)),
+            "schema_name": schema_name,
+            "fixed_allocations": params.get("fixed_allocations", None),
+            "terminated_early": False,
+            "termination_reason": str(e),
+            "subsidy_usage": {},
+            "total_system_travel_time": 0.0,
+            "total_trips": 0,
+            "avg_trip_time": 0.0,
+            "avg_equity": 0.0,
+            "equity_scores": {"low": 0.0, "middle": 0.0, "high": 0.0},
+            "low": _empty_income_block(avg_value=0.0),
+            "middle": _empty_income_block(avg_value=0.0),
+            "high": _empty_income_block(avg_value=0.0),
+            "income_breakdown": {
+                "low": _empty_income_block(avg_value=0.0),
+                "middle": _empty_income_block(avg_value=0.0),
+                "high": _empty_income_block(avg_value=0.0),
+            },
+            "mode_breakdown": {},
+            **_meta,
+        }
     finally:
-        # Safely close session if it was created
         if session:
             session.close()
-            
-        # Clean up by dropping the schema
         if engine:
             try:
                 with engine.connect() as connection:
@@ -459,6 +537,11 @@ def run_sequential_fps_optimization(fps_values, base_parameters, num_cpus=NUM_CP
     print(f"Processing {len(fps_values)} FPS values sequentially with parallel simulations")
     
     results = {}
+    write_partial_results = os.environ.get("WRITE_PARTIAL_RESULTS", "0") == "1"
+    partial_results_dir = os.environ.get("PARTIAL_RESULTS_DIR", "")
+    if write_partial_results and partial_results_dir:
+        os.makedirs(partial_results_dir, exist_ok=True)
+
     # Sort FPS values to ensure sequential processing in ascending order
     fps_values = sorted(fps_values)
     
@@ -471,292 +554,228 @@ def run_sequential_fps_optimization(fps_values, base_parameters, num_cpus=NUM_CP
         
         print(f"Completed FPS={fps_value}, Total System Travel Time={result['total_system_travel_time']:.4f}")
         
-        # Save partial results after each FPS completes
-        with open(f"partial_results_fps_{fps_value}_{time.strftime('%Y%m%d_%H%M%S')}.pkl", "wb") as f:
-            pickle.dump(results, f)
-    
+        # Optional checkpoints (disabled by default to avoid home quota pressure on HPC)
+        if write_partial_results:
+            partial_name = f"partial_results_fps_{fps_value}_{time.strftime('%Y%m%d_%H%M%S')}.pkl"
+            partial_path = os.path.join(partial_results_dir, partial_name) if partial_results_dir else partial_name
+            try:
+                with open(partial_path, "wb") as f:
+                    pickle.dump(results, f)
+            except OSError as e:
+                print(f"[WARN] Failed to write partial results to {partial_path}: {e}")
+
     return results
 
 def optimize_allocation_parallel(fps_value, base_parameters, num_cpus=NUM_CPUS):
     """
-    Optimize subsidy allocation using parallel simulations within a single optimization run.
-    The goal is to minimize total system travel time.
+    ModeShare-plumbing compatible BO wrapper.
+    Objective: minimize total_system_travel_time (lower is better).
     """
     print(f"\nOptimizing subsidy allocation for FPS = {fps_value} with {num_cpus} parallel simulations")
-    
-    # Define bounds and parameters
-    bounds = {
-        'low_bike': (0.45, 0.65),      
-        'low_car': (0.5, 0.7),       
-        'low_MaaS_Bundle': (0.45, 0.65),
-        'low_public': (0.45, 0.65),    
-        'middle_bike': (0.25, 0.45),
-        'middle_car': (0.25, 0.45),
-        'middle_MaaS_Bundle': (0.25, 0.45),
-        'middle_public': (0.2, 0.4),
-        'high_bike': (0.05, 0.20),
-        'high_car': (0, 0.15),      
-        'high_MaaS_Bundle': (0.05, 0.20),
-        'high_public': (0.05, 0.20)
-    }
-    
-    # Set up parameter space and sampling
-    lower_bounds = []
-    upper_bounds = []
+
     param_names = [
-        'low_bike', 'low_car', 'low_MaaS_Bundle', 'low_public',
-        'middle_bike', 'middle_car', 'middle_MaaS_Bundle', 'middle_public',
-        'high_bike', 'high_car', 'high_MaaS_Bundle', 'high_public'
+        "low_bike", "low_car", "low_MaaS_Bundle", "low_public",
+        "middle_bike", "middle_car", "middle_MaaS_Bundle", "middle_public",
+        "high_bike", "high_car", "high_MaaS_Bundle", "high_public"
     ]
-    
-    for param in param_names:
-        lower_bounds.append(bounds[param][0])
-        upper_bounds.append(bounds[param][1])
-    
-    # Use Latin Hypercube Sampling with specific bounds
-    sampler = qmc.LatinHypercube(d=12, seed=42)
-    X_init = sampler.random(n=10)  
+
+    bounds = {p: (0.0, 0.8) for p in param_names}
+    lower_bounds = [bounds[p][0] for p in param_names]
+    upper_bounds = [bounds[p][1] for p in param_names]
+
+    sampler = qmc.LatinHypercube(d=len(param_names), seed=42)
+    X_init = sampler.random(n=8)
     X_init = qmc.scale(X_init, lower_bounds, upper_bounds)
-    
-    # Set up early termination parameters
+
     min_improvement_threshold = 0.01
-    target_time_threshold = 1000  # Target threshold for total system travel time
+    # Set to a float to enable hard-threshold early exit for total system travel time.
+    target_total_time_threshold = None
     no_improvement_iterations = 0
     patience = 6
-    
-    best_total_time = float('inf') 
+
+    best_obj = float("inf")
     best_allocations = None
     best_results = None
-    previous_best = float('inf')
+    previous_best = float("inf")
 
-    # Prepare parameter sets for initial points
-    initial_param_sets = []
-    for i, params in enumerate(X_init):
-        allocations = {
-            'low_bike': params[0],
-            'low_car': params[1],
-            'low_MaaS_Bundle': params[2],
-            'low_public': params[3],
-            'middle_bike': params[4],
-            'middle_car': params[5],
-            'middle_MaaS_Bundle': params[6],
-            'middle_public': params[7],
-            'high_bike': params[8],
-            'high_car': params[9],
-            'high_MaaS_Bundle': params[10],
-            'high_public': params[11]
+    def _build_optimizer_output(terminated_early=False, termination_reason=""):
+        best_full = best_results if isinstance(best_results, dict) else {}
+        low_component = float(best_full.get("low", {}).get("avg_trip_time", np.nan))
+        middle_component = float(best_full.get("middle", {}).get("avg_trip_time", np.nan))
+        high_component = float(best_full.get("high", {}).get("avg_trip_time", np.nan))
+        return {
+            "fps_value": float(fps_value),
+            "optimal_allocations": best_allocations,
+            "equity_scores": {
+                "low": low_component,
+                "middle": middle_component,
+                "high": high_component,
+            },
+            "avg_equity": float(best_obj),
+            "total_system_travel_time": float(best_obj),
+            "avg_trip_time": float(best_full.get("avg_trip_time", np.nan)),
+            "total_trips": int(best_full.get("total_trips", 0) or 0),
+            "income_breakdown": {lvl: best_full.get(lvl, {}) for lvl in ["low", "middle", "high"]},
+            "mode_breakdown": best_full.get("mode_breakdown", {}),
+            "full_results": best_full,
+            "subsidy_usage": best_full.get("subsidy_usage", {}),
+            "terminated_early": bool(terminated_early),
+            "termination_reason": str(termination_reason),
         }
-        
-        sim_params = base_parameters.copy()
-        sim_params['fps_value'] = fps_value
-        sim_params['fixed_allocations'] = allocations
-        sim_params['simulation_steps'] = SIMULATION_STEPS
-        sim_params['simulation_id'] = i  # Add ID for tracking
-        initial_param_sets.append(sim_params)
-    
-    # Run initial simulations in parallel
-    print(f"Running {len(initial_param_sets)} initial simulations in parallel with {num_cpus} CPUs")
-    with mp.Pool(processes=num_cpus) as pool:
-        initial_results = list(pool.map(run_single_simulation, initial_param_sets))
-    
-    # Process initial results
-    y_init = []
-    for i, results in enumerate(initial_results):
-        if results:
-            # Use total system travel time as our optimization metric
-            total_time = results.get('total_system_travel_time', float('inf'))
-            y_init.append(total_time)
-            
-            if total_time < best_total_time:
-                best_total_time = total_time
-                best_allocations = {
-                    'low_bike': X_init[i][0],
-                    'low_car': X_init[i][1],
-                    'low_MaaS_Bundle': X_init[i][2],
-                    'low_public': X_init[i][3],
-                    'middle_bike': X_init[i][4],
-                    'middle_car': X_init[i][5],
-                    'middle_MaaS_Bundle': X_init[i][6],
-                    'middle_public': X_init[i][7],
-                    'high_bike': X_init[i][8],
-                    'high_car': X_init[i][9],
-                    'high_MaaS_Bundle': X_init[i][10],
-                    'high_public': X_init[i][11]
-                }
-                best_results = results
-                print(f"New best total system travel time from initial points: {best_total_time:.2f}")
-                
-                if best_total_time < target_time_threshold:
-                    print(f"Early termination: Target time threshold {target_time_threshold} reached!")
-                    return {
-                        'fps_value': fps_value,
-                        'optimal_allocations': best_allocations,
-                        'total_system_travel_time': best_total_time,
-                        'avg_trip_time': best_results.get('avg_trip_time', 0),
-                        'total_trips': best_results.get('total_trips', 0),
-                        'income_breakdown': {level: best_results[level] for level in ['low', 'middle', 'high']},
-                        'mode_breakdown': best_results.get('mode_breakdown', {}),
-                        'full_results': best_results,
-                        'subsidy_usage': best_results.get('subsidy_usage', {}),
-                        'terminated_early': True,
-                        'termination_reason': 'Target threshold reached'
-                    }
-        else:
-            y_init.append(float('inf'))
 
-    # Setup Gaussian Process
+    # Initial LHS
+    initial_param_sets = []
+    for i, x in enumerate(X_init):
+        allocations = {k: float(v) for k, v in zip(param_names, x)}
+
+        sim_params = base_parameters.copy()
+        sim_params["fps_value"] = float(fps_value)
+        sim_params["fixed_allocations"] = allocations
+        sim_params["simulation_steps"] = int(SIMULATION_STEPS)
+        sim_params["simulation_id"] = i
+        sim_params["bo_iteration"] = 0
+        sim_params["seed"] = int(base_parameters.get("seed", 0))
+        sim_params["base_seed"] = int(base_parameters.get("base_seed", 12345))
+        initial_param_sets.append(sim_params)
+
+    print(f"Running {len(initial_param_sets)} initial simulations in parallel with {num_cpus} CPUs")
+    with mp.Pool(processes=min(num_cpus, len(initial_param_sets))) as pool:
+        initial_results = list(pool.map(run_single_simulation, initial_param_sets))
+
+    y_init = []
+    for i, r in enumerate(initial_results):
+        if isinstance(r, dict):
+            obj = float(r.get("total_system_travel_time", float("inf")))
+            y_init.append(obj)
+
+            if obj < best_obj:
+                best_obj = obj
+                best_allocations = {k: float(v) for k, v in zip(param_names, X_init[i])}
+                best_results = r
+                print(f"New best total_system_travel_time from initial points: {best_obj:.6f}")
+                if (
+                    target_total_time_threshold is not None
+                    and np.isfinite(best_obj)
+                    and best_obj < float(target_total_time_threshold)
+                ):
+                    print("Early termination: Target total-system-travel-time threshold reached.")
+                    return _build_optimizer_output(
+                        terminated_early=True,
+                        termination_reason="Target threshold reached",
+                    )
+        else:
+            y_init.append(float("inf"))
+
     kernel = Matern(nu=2.5)
     gp = GaussianProcessRegressor(kernel=kernel, normalize_y=True, random_state=42)
-    
+
     X = X_init
-    y = np.array(y_init)
-    
-    # Run optimization iterations
-    max_iterations = 10
-    
+    y = np.array(y_init, dtype=float)
+
+    max_iterations = 3
+
     for iteration in range(max_iterations):
-        previous_best = best_total_time
-        
-        # Fit GP to current data
+        previous_best = best_obj
+
         gp.fit(X, y)
-        
-        # Generate candidates for Expected Improvement
-        candidates = sampler.random(n=500)
+
+        candidates = sampler.random(n=200)
         candidates = qmc.scale(candidates, lower_bounds, upper_bounds)
-        
-        # Calculate EI for all candidates (minimizing, not maximizing)
+
         ei_values = []
-        for candidate in candidates:
-            mu, sigma = gp.predict(candidate.reshape(1, -1), return_std=True)
+        for c in candidates:
+            mu, sigma = gp.predict(c.reshape(1, -1), return_std=True)
             mu = mu.reshape(-1)
             sigma = sigma.reshape(-1)
-            
             imp = np.min(y) - mu
             Z = imp / (sigma + 1e-9)
             ei = imp * norm.cdf(Z) + sigma * norm.pdf(Z)
-            ei_values.append(float(ei.item()) if hasattr(ei, 'item') else float(ei))
-        
-        # Select top candidates for parallel evaluation
+            ei_values.append(float(ei.item()) if hasattr(ei, "item") else float(ei))
+
         top_n = min(num_cpus, len(candidates))
         top_indices = np.argsort(ei_values)[-top_n:]
         top_candidates = [candidates[i] for i in top_indices]
-        
-        # Prepare parameter sets for parallel simulation
+
         iteration_param_sets = []
-        for i, candidate in enumerate(top_candidates):
-            allocations = {
-                'low_bike': candidate[0],
-                'low_car': candidate[1],
-                'low_MaaS_Bundle': candidate[2],
-                'low_public': candidate[3],
-                'middle_bike': candidate[4],
-                'middle_car': candidate[5],
-                'middle_MaaS_Bundle': candidate[6],
-                'middle_public': candidate[7],
-                'high_bike': candidate[8],
-                'high_car': candidate[9],
-                'high_MaaS_Bundle': candidate[10],
-                'high_public': candidate[11]
-            }
-            
+        for j, c in enumerate(top_candidates):
+            allocations = {k: float(v) for k, v in zip(param_names, c)}
+
             sim_params = base_parameters.copy()
-            sim_params['fps_value'] = fps_value
-            sim_params['fixed_allocations'] = allocations
-            sim_params['simulation_steps'] = SIMULATION_STEPS
-            sim_params['simulation_id'] = i
+            sim_params["fps_value"] = float(fps_value)
+            sim_params["fixed_allocations"] = allocations
+            sim_params["simulation_steps"] = int(SIMULATION_STEPS)
+            sim_params["simulation_id"] = j
+            sim_params["bo_iteration"] = iteration + 1
+            sim_params["seed"] = int(base_parameters.get("seed", 0))
+            sim_params["base_seed"] = int(base_parameters.get("base_seed", 12345))
+
+            sim_params["pilot_steps"] = 20
+            sim_params["early_stop_best_equity"] = float(best_obj)
+            sim_params["early_stop_margin"] = 0.20
+            sim_params["early_stop_exhaust_frac"] = 0.90
+
             iteration_param_sets.append(sim_params)
-        
-        # Run simulations in parallel
+
         print(f"Iteration {iteration+1}: Running {len(iteration_param_sets)} simulations in parallel")
         with mp.Pool(processes=min(num_cpus, len(iteration_param_sets))) as pool:
-            simulation_results = list(pool.map(run_single_simulation, iteration_param_sets))
-        
-        # Process results and update best allocation
-        found_improvement = False
-        for i, result in enumerate(simulation_results):
-            if result:
-                total_time = result.get('total_system_travel_time', float('inf'))
-                
-                # Add to GP data
-                X = np.vstack([X, top_candidates[i]])
-                y = np.append(y, total_time)
-                
-                improvement = previous_best - total_time
-                
-                if total_time < best_total_time:
-                    best_total_time = total_time
-                    best_allocations = {
-                        'low_bike': top_candidates[i][0],
-                        'low_car': top_candidates[i][1],
-                        'low_MaaS_Bundle': top_candidates[i][2],
-                        'low_public': top_candidates[i][3],
-                        'middle_bike': top_candidates[i][4],
-                        'middle_car': top_candidates[i][5],
-                        'middle_MaaS_Bundle': top_candidates[i][6],
-                        'middle_public': top_candidates[i][7],
-                        'high_bike': top_candidates[i][8],
-                        'high_car': top_candidates[i][9],
-                        'high_MaaS_Bundle': top_candidates[i][10],
-                        'high_public': top_candidates[i][11]
-                    }
-                    best_results = result
-                    found_improvement = True
-                    print(f"Iteration {iteration + 1}, New best total system travel time: {best_total_time:.2f}, Improvement: {improvement:.2f}")
-                    
-                    if improvement > min_improvement_threshold * previous_best:  # Use percentage improvement
-                        no_improvement_iterations = 0
-                    else:
-                        no_improvement_iterations += 1
-                        print(f"  Minimal improvement: {improvement:.2f} < {min_improvement_threshold * previous_best:.2f}")
-                    
-                    if best_total_time < target_time_threshold:
-                        print(f"Early termination after {iteration + 1} iterations: Target time threshold reached!")
-                        return {
-                            'fps_value': fps_value,
-                            'optimal_allocations': best_allocations,
-                            'total_system_travel_time': best_total_time,
-                            'avg_trip_time': best_results.get('avg_trip_time', 0),
-                            'total_trips': best_results.get('total_trips', 0),
-                            'income_breakdown': {level: best_results[level] for level in ['low', 'middle', 'high']},
-                            'mode_breakdown': best_results.get('mode_breakdown', {}),
-                            'full_results': best_results,
-                            'subsidy_usage': best_results.get('subsidy_usage', {}),
-                            'terminated_early': True,
-                            'termination_reason': 'Target threshold reached'
-                        }
-        
-        if not found_improvement:
-            print(f"Iteration {iteration + 1}, No improvement. Current best: {best_total_time:.2f}")
-            no_improvement_iterations += 1
-        
-        if no_improvement_iterations >= patience:
-            print(f"Early termination after {iteration + 1} iterations: No significant improvement for {patience} consecutive iterations")
-            return {
-                'fps_value': fps_value,
-                'optimal_allocations': best_allocations,
-                'total_system_travel_time': best_total_time,
-                'avg_trip_time': best_results.get('avg_trip_time', 0),
-                'total_trips': best_results.get('total_trips', 0),
-                'income_breakdown': {level: best_results[level] for level in ['low', 'middle', 'high']},
-                'mode_breakdown': best_results.get('mode_breakdown', {}),
-                'full_results': best_results,
-                'subsidy_usage': best_results.get('subsidy_usage', {}),
-                'terminated_early': True,
-                'termination_reason': 'Convergence'
-            }
+            sim_results = list(pool.map(run_single_simulation, iteration_param_sets))
 
-    return {
-        'fps_value': fps_value,
-        'optimal_allocations': best_allocations,
-        'total_system_travel_time': best_total_time,
-        'avg_trip_time': best_results.get('avg_trip_time', 0),
-        'total_trips': best_results.get('total_trips', 0),
-        'income_breakdown': {level: best_results[level] for level in ['low', 'middle', 'high']},
-        'mode_breakdown': best_results.get('mode_breakdown', {}),
-        'full_results': best_results,
-        'subsidy_usage': best_results.get('subsidy_usage', {}),
-        'terminated_early': False
-    }
+        found_improvement = False
+        for j, r in enumerate(sim_results):
+            if not isinstance(r, dict):
+                continue
+
+            obj = float(r.get("total_system_travel_time", float("inf")))
+
+            X = np.vstack([X, top_candidates[j]])
+            y = np.append(y, obj)
+
+            improvement = previous_best - obj
+
+            if obj < best_obj:
+                best_obj = obj
+                best_allocations = {k: float(v) for k, v in zip(param_names, top_candidates[j])}
+                best_results = r
+                found_improvement = True
+                print(
+                    f"Iteration {iteration+1}, New best total_system_travel_time: "
+                    f"{best_obj:.6f}, Improvement: {improvement:.6f}"
+                )
+
+                if improvement > min_improvement_threshold:
+                    no_improvement_iterations = 0
+                else:
+                    no_improvement_iterations += 1
+                    print(f"  Minimal improvement: {improvement:.6f} < {min_improvement_threshold}")
+
+                if (
+                    target_total_time_threshold is not None
+                    and np.isfinite(best_obj)
+                    and best_obj < float(target_total_time_threshold)
+                ):
+                    print(
+                        f"Early termination after {iteration+1} iterations: "
+                        "Target total-system-travel-time threshold reached."
+                    )
+                    return _build_optimizer_output(
+                        terminated_early=True,
+                        termination_reason="Target threshold reached",
+                    )
+
+        if not found_improvement:
+            print(f"Iteration {iteration+1}, No improvement. Current best: {best_obj:.6f}")
+            no_improvement_iterations += 1
+
+        if no_improvement_iterations >= patience:
+            return _build_optimizer_output(
+                terminated_early=True,
+                termination_reason="Convergence",
+            )
+
+    return _build_optimizer_output(
+        terminated_early=False,
+        termination_reason="",
+    )
 
 def visualize_results(results, output_dir):
     """
@@ -1125,27 +1144,39 @@ def visualize_subsidy_usage(results, output_dir):
     print("\nStarting subsidy usage visualization...")
     print(f"Number of results entries: {len(results)}")
     
-    # Extract subsidy usage data from results
+    # Extract subsidy usage and trip-count data from results
     rows = []
+    income_levels = ['low', 'middle', 'high']
     for fps, result in results.items():
         print(f"Checking result for FPS {fps}...")
         if 'subsidy_usage' in result:
             print(f"  Found subsidy_usage for FPS {fps}")
-            subsidy_usage = result['subsidy_usage']
-            print(f"  Total subsidy used: {subsidy_usage['total_subsidy_used']}")
-            print(f"  Percentage used: {subsidy_usage['percentage_used']}%")
+            subsidy_usage = result.get('subsidy_usage') or {}
+            total_subsidy_used = float(subsidy_usage.get('total_subsidy_used', 0.0) or 0.0)
+            percentage_used = float(subsidy_usage.get('percentage_used', 0.0) or 0.0)
+            income_breakdown = result.get('income_breakdown') or {}
+            subsidy_by_income = subsidy_usage.get('subsidy_by_income') or {}
+
+            print(f"  Total subsidy used: {total_subsidy_used}")
+            print(f"  Percentage used: {percentage_used}%")
             row = {
                 'fps_value': fps,
                 'total_system_travel_time': result.get('total_system_travel_time', 0),
-                'total_subsidy_used': subsidy_usage['total_subsidy_used'],
-                'percentage_used': subsidy_usage['percentage_used']
+                'avg_trip_time': result.get('avg_trip_time', np.nan),
+                'total_trips': int(result.get('total_trips', 0) or 0),
+                'total_subsidy_used': total_subsidy_used,
+                'percentage_used': percentage_used
             }
             
-            # Add subsidy usage by income level
-            for income_level, stats in subsidy_usage['subsidy_by_income'].items():
-                row[f'{income_level}_amount'] = stats['amount']
-                row[f'{income_level}_percentage_of_used'] = stats['percentage_of_used']
-                row[f'{income_level}_percentage_of_total_fps'] = stats['percentage_of_total_fps']
+            # Add subsidy usage and trip counts by income level
+            for income_level in income_levels:
+                stats = subsidy_by_income.get(income_level, {})
+                row[f'{income_level}_amount'] = float(stats.get('amount', 0.0) or 0.0)
+                row[f'{income_level}_percentage_of_used'] = float(stats.get('percentage_of_used', 0.0) or 0.0)
+                row[f'{income_level}_percentage_of_total_fps'] = float(stats.get('percentage_of_total_fps', 0.0) or 0.0)
+                income_stats = income_breakdown.get(income_level, {})
+                row[f'{income_level}_trip_count'] = int(income_stats.get('trip_count', 0) or 0)
+                row[f'{income_level}_avg_trip_time'] = float(income_stats.get('avg_trip_time', np.nan))
             
             rows.append(row)
         else:
@@ -1213,7 +1244,6 @@ def visualize_subsidy_usage(results, output_dir):
     # 3. Plot subsidy distribution by income group (percentage of used subsidy)
     plt.figure(figsize=(12, 8))
     
-    income_levels = ['low', 'middle', 'high']
     colors = {'low': '#1f77b4', 'middle': '#ff7f0e', 'high': '#2ca02c'}
     
     for income in income_levels:
@@ -1324,107 +1354,135 @@ def visualize_subsidy_usage(results, output_dir):
         fig.tight_layout()
         plt.savefig(os.path.join(output_dir, 'travel_time_vs_subsidy_usage.png'), dpi=300, bbox_inches='tight')
         plt.close()
+
+        # 7. Explicit trip-count trend (useful for explaining total-system-time shifts)
+        plt.figure(figsize=(12, 8))
+        fig, ax1 = plt.subplots(figsize=(12, 8))
+
+        color1 = 'tab:purple'
+        ax1.set_xlabel('Fixed Pool Subsidy (FPS)', fontsize=14)
+        ax1.set_ylabel('Total Trips', color=color1, fontsize=14)
+        ax1.plot(df['fps_value'], df['total_trips'], color=color1, marker='o', linestyle='-')
+        ax1.tick_params(axis='y', labelcolor=color1)
+        ax1.set_xscale('log')
+        ax1.grid(True, alpha=0.3)
+
+        ax2 = ax1.twinx()
+        color2 = 'tab:orange'
+        ax2.set_ylabel('Avg Trip Time (minutes)', color=color2, fontsize=14)
+        ax2.plot(df['fps_value'], df['avg_trip_time'], color=color2, marker='s', linestyle='-')
+        ax2.tick_params(axis='y', labelcolor=color2)
+
+        plt.title('Trips and Average Trip Time vs FPS', fontsize=16)
+        fig.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'trip_count_vs_fps.png'), dpi=300, bbox_inches='tight')
+        plt.close()
     except Exception as e:
         print(f"Error creating subsidy vs travel time visualization: {str(e)}")
         traceback.print_exc()
     
     # Save data table for reference
-    subsidy_table = df[['fps_value', 'total_system_travel_time', 'percentage_used', 'total_subsidy_used'] + 
-                     [f'{income}_{metric}' for income in income_levels 
-                      for metric in ['amount', 'percentage_of_used', 'percentage_of_total_fps']]]
+    subsidy_table = df[['fps_value', 'total_system_travel_time', 'avg_trip_time', 'total_trips',
+                        'percentage_used', 'total_subsidy_used'] +
+                      [f'{income}_{metric}' for income in income_levels
+                       for metric in ['amount', 'percentage_of_used', 'percentage_of_total_fps',
+                                      'trip_count', 'avg_trip_time']]]
     subsidy_table.to_csv(os.path.join(output_dir, 'subsidy_usage_statistics.csv'), index=False)
 
+    trip_summary = df[['fps_value', 'total_trips', 'avg_trip_time', 'total_system_travel_time',
+                       'total_subsidy_used', 'percentage_used',
+                       'low_trip_count', 'middle_trip_count', 'high_trip_count']]
+    trip_summary.to_csv(os.path.join(output_dir, 'trip_summary_by_fps.csv'), index=False)
+
 def main():
-    """Main function to run the complete total system travel time optimization analysis"""
-    # Define base parameters
-    print(f"Starting parallel optimization with {NUM_CPUS} CPUs")
+    """Total system travel time optimisation (ModeShare-plumbing compatible)."""
+    global NUM_CPUS, SIMULATION_STEPS
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--seed0", type=int, default=0, help="Seed index for this optimization run")
+    parser.add_argument("--out_dir", type=str, default=None, help="Output directory for this run")
+    parser.add_argument("--num_cpus", type=int, default=NUM_CPUS, help="Parallel CPUs within this job")
+    parser.add_argument("--steps", type=int, default=SIMULATION_STEPS, help="Simulation steps per evaluation")
+    args = parser.parse_args()
+
+    NUM_CPUS = args.num_cpus
+    SIMULATION_STEPS = args.steps
+    optimizer_seed = args.seed0
+    base_seed = 12345
+
+    print(
+        f"Optimizer seed0={optimizer_seed}, base_seed={base_seed}, "
+        f"NUM_CPUS={NUM_CPUS}, STEPS={SIMULATION_STEPS}"
+    )
+
+    # IMPORTANT: match Mode Share base_parameters (commuters + background traffic)
     base_parameters = {
-        'num_commuters': 130,
-        'grid_width': 85,
-        'grid_height': 85,
-        'data_income_weights': [0.5, 0.3, 0.2],
-        'data_health_weights': [0.9, 0.1],
-        'data_payment_weights': [0.8, 0.2],
-        'data_age_distribution': {(18, 25): 0.2, (26, 35): 0.3, (36, 45): 0.2, 
-                                (46, 55): 0.15, (56, 65): 0.1, (66, 75): 0.05},
-        'data_disability_weights': [0.2, 0.8],
-        'data_tech_access_weights': [0.95, 0.05],
-        'ASC_VALUES': {'car': 0, 'bike': 0, 'public': 0, 
-                      'walk': 0, 'maas':0, 'default': 0},
-        'UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS': {
-            'beta_C': -0.02,
-            'beta_T': -0.09
-        },
-        'UTILITY_FUNCTION_BASE_COEFFICIENTS': {
-            'beta_C': -0.15, 'beta_T': -0.09, 
-            'beta_W': -0.04, 'beta_A': -0.04, 'alpha': -0.01
-        },
-        'PENALTY_COEFFICIENTS': {
-            'disability_bike_walk': 0.8,
-            'age_health_bike_walk': 0.3,
-            'no_tech_access_car_bike': 0.1
-        },
-        'AFFORDABILITY_THRESHOLDS': {'low': 25, 'middle': 40, 'high': 130},
-        'FLEXIBILITY_ADJUSTMENTS': {'low': 1.15, 'medium': 1.0, 'high': 0.85},
-        'VALUE_OF_TIME': {'low': 5, 'middle': 10, 'high': 20},
-        'public_price_table': {
-            'train': {'on_peak': 3, 'off_peak': 2.6},
-            'bus': {'on_peak': 2.4, 'off_peak': 2}
-        },
-        'ALPHA_VALUES': {
-            'UberLike1': 0.3,
-            'UberLike2': 0.3,
-            'BikeShare1': 0.25,
-            'BikeShare2': 0.25
-        },
-        'DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS': {
-            'S_base': 0.02,  # Base surcharge (2%)
-            'alpha': 0.10,   # Sensitivity coefficient
-            'delta': 0.5     # Reduction factor for subscription model
-        },
-        'BACKGROUND_TRAFFIC_AMOUNT': 120,
-        'CONGESTION_ALPHA': 0.03,
-        'CONGESTION_BETA': 1.5,  
-        'CONGESTION_CAPACITY': 10,
-        'CONGESTION_T_IJ_FREE_FLOW': 1.5,
-        'uber_like1_capacity': 15,
-        'uber_like1_price': 15.5,
-        'uber_like2_capacity': 19,
-        'uber_like2_price': 16.5,
-        'bike_share1_capacity': 10,
-        'bike_share1_price': 2.5,
-        'bike_share2_capacity': 12,
-        'bike_share2_price': 3 
+        "num_commuters": 200,
+        "grid_width": 100,
+        "grid_height": 100,
+        "data_income_weights": [0.5, 0.3, 0.2],
+        "data_health_weights": [0.9, 0.1],
+        "data_payment_weights": [0.8, 0.2],
+        "data_age_distribution": {(18, 25): 0.2, (26, 35): 0.3, (36, 45): 0.2,
+                                  (46, 55): 0.15, (56, 65): 0.1, (66, 75): 0.05},
+        "data_disability_weights": [0.2, 0.8],
+        "data_tech_access_weights": [0.95, 0.05],
+        "ASC_VALUES": {"car": 0, "bike": 0, "public": 0, "walk": 0, "maas": 0, "default": 0},
+        "UTILITY_FUNCTION_HIGH_INCOME_CAR_COEFFICIENTS": {"beta_C": -0.02, "beta_T": -0.09},
+        "UTILITY_FUNCTION_BASE_COEFFICIENTS": {"beta_C": -0.15, "beta_T": -0.09, "beta_W": -0.04, "beta_A": -0.04, "alpha": -0.01},
+        "PENALTY_COEFFICIENTS": {"disability_bike_walk": 0.8, "age_health_bike_walk": 0.3, "no_tech_access_car_bike": 0.1},
+        "AFFORDABILITY_THRESHOLDS": {"low": 25, "middle": 40, "high": 130},
+        "FLEXIBILITY_ADJUSTMENTS": {"low": 1.15, "medium": 1.0, "high": 0.85},
+        "VALUE_OF_TIME": {"low": 5, "middle": 10, "high": 20},
+        "public_price_table": {"train": {"on_peak": 3, "off_peak": 2.6}, "bus": {"on_peak": 2.4, "off_peak": 2}},
+        "ALPHA_VALUES": {"UberLike1": 0.3, "UberLike2": 0.3, "BikeShare1": 0.25, "BikeShare2": 0.25},
+        "DYNAMIC_MAAS_SURCHARGE_BASE_COEFFICIENTS": {"S_base": 0.02, "alpha": 0.10, "delta": 0.5},
+        "BACKGROUND_TRAFFIC_AMOUNT": 200,
+        "CONGESTION_ALPHA": 0.03,
+        "CONGESTION_BETA": 1.5,
+        "CONGESTION_CAPACITY": 10,
+        "CONGESTION_T_IJ_FREE_FLOW": 1.5,
+        "uber_like1_capacity": 15,
+        "uber_like1_price": 15.5,
+        "uber_like2_capacity": 19,
+        "uber_like2_price": 16.5,
+        "bike_share1_capacity": 10,
+        "bike_share1_price": 2.5,
+        "bike_share2_capacity": 12,
+        "bike_share2_price": 3,
     }
-    
-    # Define FPS values to analyze (using a logarithmic scale for better coverage)
-    # Using a focused sampling for total system travel time analysis
-    fps_values = [1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 6000, 7000, 8000]
+    base_parameters["seed"] = int(optimizer_seed)
+    base_parameters["base_seed"] = int(base_seed)
 
-    # Run parallel optimization
-    results = run_sequential_fps_optimization(fps_values, base_parameters, num_cpus=NUM_CPUS)
-    
-    # Save results
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    output_dir = f"total_system_travel_time_results_{timestamp}"
+    # IMPORTANT: same fps_values set as Mode Share
+    fps_values = [3500, 4500, 5500, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 15000]
+
+    # Output directory (same serialization contract)
+    if args.out_dir is None:
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        output_dir = f"total_system_travel_time_results_{timestamp}"
+    else:
+        output_dir = args.out_dir
     os.makedirs(output_dir, exist_ok=True)
-    
-    # Save individual FPS results
+
+    # Persist base parameters for reproducibility
+    with open(os.path.join(output_dir, "base_parameters.pkl"), "wb") as f:
+        pickle.dump(base_parameters, f)
+
+    results = run_sequential_fps_optimization(fps_values, base_parameters, num_cpus=NUM_CPUS)
+
+    # Per-FPS result files + all_results.pkl
     for fps, result in results.items():
-        with open(f"{output_dir}/fps_{fps}_result.pkl", "wb") as f:
+        with open(os.path.join(output_dir, f"fps_{fps}_result.pkl"), "wb") as f:
             pickle.dump(result, f)
-    
-    # Save combined results
-    with open(f"{output_dir}/all_results.pkl", "wb") as f:
+
+    with open(os.path.join(output_dir, "all_results.pkl"), "wb") as f:
         pickle.dump(results, f)
-    
-    # Identify best FPS
-    best_fps = min(results.items(), key=lambda x: x[1]['total_system_travel_time'])[0]
+
+    best_fps = min(results.items(), key=lambda x: x[1].get("avg_equity", float("inf")))[0]
     print(f"\nOptimal FPS value: {best_fps}")
-    print(f"Minimum total system travel time: {results[best_fps]['total_system_travel_time']:.2f} minutes")
-    
-    # Create visualizations
+    print(f"Optimal total_system_travel_time: {results[best_fps].get('total_system_travel_time', np.nan):.6f}")
+
     visualize_results(results, output_dir)
     visualize_subsidy_usage(results, output_dir)
 

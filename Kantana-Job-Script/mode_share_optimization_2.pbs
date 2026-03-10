@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -N mode_share_opt_2
-#PBS -l select=1:ncpus=15:mem=32gb
+#PBS -l select=1:ncpus=10:mem=48gb
 #PBS -l walltime=12:00:00
 #PBS -j oe
 #PBS -m ae

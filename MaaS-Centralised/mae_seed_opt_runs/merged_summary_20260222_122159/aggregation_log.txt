@@ -1,0 +1,9 @@
+[INFO] seed_opt_base: /home/z5247491/MaaS-Simulation/MaaS-Centralised/seed_opt_runs
+[INFO] out_dir: /home/z5247491/MaaS-Simulation/MaaS-Centralised/seed_opt_runs/merged_summary_20260222_122159
+[INFO] Found 30 all_results.pkl files
+[INFO] Parsed 360 (seed,fps) records
+[INFO] Wrote: /home/z5247491/MaaS-Simulation/MaaS-Centralised/seed_opt_runs/merged_summary_20260222_122159/summary_mean_std_ci95.csv
+[INFO] Wrote: /home/z5247491/MaaS-Simulation/MaaS-Centralised/seed_opt_runs/merged_summary_20260222_122159/allocations_mean_std_ci95.csv
+[INFO] Wrote: /home/z5247491/MaaS-Simulation/MaaS-Centralised/seed_opt_runs/merged_summary_20260222_122159/per_seed_fps_table.csv
+[INFO] Allocation heatmaps created
+[INFO] Wrote: /home/z5247491/MaaS-Simulation/MaaS-Centralised/seed_opt_runs/merged_summary_20260222_122159/allocation_stability_by_fps.csv
