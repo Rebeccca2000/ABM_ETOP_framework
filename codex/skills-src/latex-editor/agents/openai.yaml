@@ -1,0 +1,4 @@
+interface:
+  display_name: "LaTeX Editor"
+  short_description: "Edit manuscript LaTeX safely and consistently"
+  default_prompt: "Use $latex-editor to revise the manuscript conservatively while preserving labels, references, and verified numbers."

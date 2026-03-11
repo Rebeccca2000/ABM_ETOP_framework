@@ -1,0 +1,882 @@
+\documentclass[a4paper,fleqn]{cas-sc}
+\RequirePackage{fix-cm}
+
+\usepackage[authoryear,longnamesfirst]{natbib}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{color}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{fancyhdr}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{setspace}
+\usepackage{pgfplots} 
+\pgfplotsset{compat=1.18}
+\usepackage{algorithm} 
+\usepackage{algpseudocode}
+\usetikzlibrary{positioning}
+\usepackage{listings}
+\usepackage{pdflscape}
+\usepackage{tikz}
+\usetikzlibrary{positioning, shapes.geometric}
+\usepackage{changepage}
+\usepackage{adjustbox}
+\usepackage{hyperref}
+\usepackage[none]{hyphenat}  % Disable hyphenation completely
+
+%%%Author macros
+\def\tsc#1{\csdef{#1}{\textsc{\lowercase{#1}}\xspace}}
+\tsc{WGM}
+\tsc{QE}
+%%%
+
+\usepackage{lastpage}
+
+% Define page style for main document (just page numbers)
+\fancypagestyle{maintext}{%
+  \fancyhf{}%
+  \fancyfoot[C]{\thepage}%
+}
+
+% Set main document to use the simple page style
+\pagestyle{maintext}
+
+% Short author
+\shortauthors{Zhao et al.}  
+% Main title of the paper
+\title [mode = title]{ABM-ETOP: An Agent-Based Framework for Evaluating Transport Policies for Equity and Efficiency}  
+
+% First author
+\author[1]{Ruiyi Zhao}
+% Corresponding author indication
+\cormark[1]
+% Footnote of the first author
+\fnmark[1]
+% Email id of the first author
+\ead{ruiyi.zhao1@unsw.edu.au}
+% URL of the first author
+\ead[url]{https://rciti.unsw.edu.au/}
+
+% Second author
+\author[1]{Taha Rashidi}
+% Footnote of the second author
+\fnmark[2]
+% Email id of the second author
+\ead{rashidi@unsw.edu.au}
+
+% Third author with dual affiliation
+\author[2,1]{S. Travis Waller}
+% Footnote of the third author
+\fnmark[2]
+% Email ids of the third author
+\ead{s.waller@unsw.edu.au}
+\ead{steven_travis.waller@tu-dresden.de}
+
+
+% Define the two unique affiliations
+\affiliation[1]{organization={Research Centre for Integrated Transport Innovation (rCITI), School of Civil and Environmental Engineering, UNSW},
+            city={Sydney},
+            postcode={2052}, 
+            state={NSW},
+            country={Australia}}
+
+\affiliation[2]{organization={"Friedrich List" Faculty of Transport and Traffic Sciences, Technische Universität Dresden},
+            addressline={Professor and Chair of Transport Modelling and Simulation}, 
+            city={Dresden},
+            country={Germany}}
+
+
+\begin{document}
+
+\begin{abstract}
+The Agent-Based Model for Equity-Transport Optimisation and Policy (ABM-ETOP) is a computational framework that systematically evaluates transport policies to address inequities within the transport systems worldwide. In this study, the analysis was focused on government transport subsidy allocation policies. The ABM within the framework was originally developed by the authors to model heterogeneous commuter behaviours, dynamic service provider responses, and system-wide feedback effects. To assess the horizontal and vertical equity of the system, three policy evaluation metrics were defined: mode share equity, travel time equity, and total system travel time. Subsequently, Bayesian optimisation was utilised to minimise these metrics, thus identifying the optimal subsidies and allocations.
+The results showed the optimal subsidy level was 54.0 - 71.9\% of baseline total system travel costs across all three metrics, beyond which all performance metrics plateau with diminishing marginal returns, where the mode share equity was improved by 66.4\%, the travel time equity was improved by 87.5\%, and the total system travel time was reduced by 24\%. The framework reveals that progressive subsidy structures (55-65\% allocation to low-income groups) optimise all objectives simultaneously, challenging conventional equity-efficiency trade-offs. For an Australian city of 500,000, the competing benefits analysis shows a favourable net benefits ratio of 1.70:1, where an annual investment cost is AUD \$582.46 million with societal benefits of AUD \$992.95 million. 
+Despite the framework's multiple objectives evaluation ability, its simplified grid representation constrains its direct real-world applicability. Future research should aim to validate these findings across a wider range of urban morphologies.
+
+\end{abstract}
+
+
+\begin{keywords}
+transport equity \sep agent-based modeling \sep subsidy optimisation \sep Bayesian optimisation \sep evidence-based policy
+\end{keywords}
+
+\maketitle
+
+\section{Introduction}\label{sec:intro}
+Transport systems are critical infrastructure connecting people to opportunities, services, and social networks, yet they often cause inequities and inefficiencies. Low-income households face unfair impact, such as longer travel times, limited mode choices, and higher travel costs relative to income \citep{Lucas2016, Allen2019}. In addition, congestion and poor resource allocation restrict overall transport system performance \citep{AFTABUZZAMAN20101}. Transport subsidies is one of the primary policy tools employed to address these challenges, with governments worldwide allocating billions annually to support public transport, shared mobility services, and other transport alternatives \citep{ITF2024}. \citep{Martens2016} points out the importance of suitable subsidy design to ensure benefits reach disadvantaged groups, as "governments fail and an injustice is done whenever the design of transportation systems ignores the plight of persons lacking adequate transport services". Policymakers expect an equitable and efficient transport system, but reugular planning tools often fail to consider dynamic system responses or the complex travel constraints of disadvantaged groups \citep{Pereira2017, Martens2017b}.
+
+In this paper, we propose the Agent-Based Model for Equity-Transport Optimisation and Policy (ABM-ETOP) framework. The framework employs the heterogeneous advantages of the original designed flexible agent-based model whilst leveraging Mixed-Integer Linear Programming for optimisation. It is suitable to address diverse policymaking issues in transport subsidy evaluation across equity and efficiency dimensions. 
+
+This paper proceeds as follows: Section \ref{sec:lit} reviews the literature on transport equity frameworks, critiques existing modelling approaches, and identifies gaps in subsidy optimisation studies. Section \ref{sec:framework} then details the ABM-ETOP framework, including its architecture, innovations, formulation, parameters, and evaluation metrics. Section \ref{sec:optimisation} outlines the Bayesian optimisation methodology, equilibrium mechanisms, system dynamics, and optimisation framework used to identify optimal subsidy allocations.
+
+Section \ref{sec:results} provides comprehensive results from three policy analyses: mode share equity, travel time equity, and total system travel time, analysing optimal subsidy allocations and their impacts across income groups and transport modes. Based on a synthesis and cross-policy analysis of the preceding findings, Section \ref{sec:synthesis} presents optimal values, the income distribution of subsidies, and multiple objectives considerations, culminating in practical guidance for subsidy investment. Section \ref{sec:implications} translates the analytical results into concrete policy recommendations, including evidence-based subsidy design guidelines, competing benefits, and a phased implementation framework. Finally, Section \ref{sec:conclusions} summarises key findings, discusses methodological contributions, acknowledges limitations, and suggests directions for future research.
+
+\section{Literature Review and Research Gaps}\label{sec:lit}
+
+\subsection{Transport Equity Frameworks}
+Transport equity is essential for ensuring fair access to mobility. There are mainly two types of transport equity – horizontal and vertical equity. Horizontal equity assumes that people with similar circumstances should have similar treatments, while vertical equity prioritises benefits for disadvantaged groups, such as low-income households \citep{Litman2025, vanWee2011}. However, there are persistent gaps in translating equity principles into effective policies, as increasingly debated in policy discourse \citep{Lucas2012, Martens2016, Litman2025, vanWee2011}. For example, subsidies in transport policy have been frequently used to achieve the equity goals. Studies highlight that transport investments, such as public transit subsidies, frequently bypass low-income neighbourhoods, leaving nearly 1 million Canadians with limited accessibility \citep{Allen2019}. Similarly, UK research shows transport barriers unfairly prevent employment and healthcare access for disadvantaged groups \citep{Titheridge2014}. This study addresses these gaps with the ABM-ETOP model, providing a framework to accurately evaluate policy impacts on both vertical and horizontal equity.
+
+\subsection{Critical Assessment of Existing Modeling Approaches}\label{sec:model_critique}
+
+Providing transport subsidy is one of the key policies for improving transport equity \citep{ Lucas2016}. In this paper, we specifically analyse two main subsidy policies: Fixed Pool Subsidies (FPS) and Percentage-Based Subsidies (PBS), which are formally defined in Section \ref{sec:simpleformula}. PBS policy enables prioritising on the targeted outcome, unlike universal subsidies that often favour higher-income users. Existing tools fall short on determining the suitable FPS and PBS policies for a transport system, as the analysis requires models that capture income-based responses, provider dynamics, and optimal allocations. This section assesses four-step models, activity-based models and other agent-based models (ABMs) for transport policy analysis, particularly focus on FPS and PBS, by highlighting their strengths and limitations, before presenting the Agent-Based Model for Equity-Transport Optimisation and Policy (ABM-ETOP) as a tailored solution.
+
+\subsubsection{Four-Step Transport Models}
+Four-step models have been the backbone of transport planning since the 1950s. It includes trip generation, distribution, mode choice, and traffic assignment \citep{McNally2007a}. Their strengths include simplicity and basic socio-economic data (e.g., population, employment) requirements. It is eminently effectiveness for aggregate planning, such as estimating total trip volumes \citep{McNally2007a}. However, their reliance on aggregated regional data hides the crucial individual behaviours needed for equity analysis \citep{Martens2006}. Their static, sequential structure assumes fixed relationships, ignoring dynamic feedback (e.g., how subsidy distributions affect mode choice behaviour among diverse socioeconomic traveller segments) \citep{McNally2007a}. They lack the preciseness to model income-based subsidy impacts or optimise FPS budgets, making them inadequate for equity-focused FPS and PBS evaluation, as they cannot assess distributional effects across diverse groups \citep{Zhao2016}.
+
+\subsubsection{Activity-Based Models}
+Activity-based models is a powerful transport planning and travel demand forecasting tool. It is effective in simulating individual travellers' daily activities and travel decisions, capturing heterogeneity in behaviour and dynamic interactions \citep{McNally2007b}. Their strengths include behavioural realism, policy sensitivity, and the ability to model subsidy impacts on different groups \citep{McNally2007b}. Despite of the advantages, there are challenges that the activity models face generally. The chalenges include requirements of large scale data, computational intensiveness , and static assumptions \citep{Freedman2025}.  Here are two examples of the well-established activity-based models:
+
+\begin{itemize}
+    \item \textbf{MATSim}: MATSim is an open-source activity-based model well-suited for large-scale simulations and detailed temporal modelling of individual mode and route choices \citep{Horni2016}. Applied in public transport network design, the model's capacity to simulate ridership changes indicates its potential for subsidy analysis \citep{Horni2016}. However, as primarily a traffic simulation tool, MATSim's standard configuration has limited built-in support for highly detailed income-based behavioural heterogeneity or the direct implementation of complex subsidy schemes like percentage-based subsidy matrices; these often necessitate custom extensions and data integration \citep{Jafari2024}. Its computational intensity and lack of robust provider dynamics (e.g., MaaS travel options) hinder FPS/PBS optimization.
+    \item \textbf{POLARIS}: POLARIS is another common activity-based model developed by Argonne National Laboratory that simulates interactions between travellers, vehicles, and providers \citep{Auld2016}. It supports policy analysis, including subsidies, by simulating transit ridership changes. However, its simulation-focused design limits its potential for policy optimisations. The lack of detailed provider response modelling mean it is less suited to evaluating policy nuances like FPS budget constraints or PBS matrices\citep{Wong2020}.
+\end{itemize}
+
+\subsubsection{Other Agent-Based Models}
+Other ABMs, often custom-built or commercial, are tailored for various purposes such as analysing traffic or infrastructure or specific policy analysis \citep{Bazzan2014}. Despite their diversity, these ABMs often lack of standardisation hence reduces their competitiveness \citep{Kagho2020}. They also face similar computational and data challenges similar to activity-based models, and typically lack the specific optimization capabilities required for evaluating complex subsidy structures \citep{Zhao2016}.
+
+\subsubsection{The ABM-ETOP Framework}
+The ABM-ETOP framework addresses these gaps with a hybrid multi-agent system tailored for FPS and PBS analysis. Combining activity-based heterogeneity with Mixed-Integer Linear Programming (MILP) optimization, ABM-ETOP models income-differentiated responses to FPS budgets and PBS matrices, dynamic provider strategies (e.g., MaaS pricing), and system feedback. As illustrated in Table \ref{tab:model_comparison}, ABM-ETOP offers enhanced capabilities by overcoming the computational, behavioural, and optimisation limitations of four-step models, activity based models, and other ABMs, as validated through comparisons. This makes ABM-ETOP a meaningful advancement for equitable and efficient transport policy design. 
+
+However, ABM-ETOP's focus on equity analysis necessitates several simplifications compared to established ABMs. The framework employs a grid-based spatial representation rather than the detailed network topology found in MATSim \citep{Horni2016}, which limits its ability to model complex intersection movements, lane-level traffic dynamics, and geometric network constraints that influence real-world mobility patterns. ABM-ETOP's behavioural models are simplified compared to the sophisticated co-evolutionary optimisation and multi-dimensional choice integration present in established platforms \citep{Axhausen2010}. Additionally, the framework's small scale (85×85) grid constraint limits scalability compared to metropolitan-scale applications demonstrated by MATSim and POLARIS \citep{Auld2016}. These simplifications enable computationally tractable equity analysis within realistic resource constraints, positioning ABM-ETOP as a specialised tool for progressive subsidy evaluation rather than comprehensive transportation system modeling.
+
+\begin{table}[!t]
+\caption{Comparison of Transport Modeling Approaches for FPS and PBS Analysis}
+\label{tab:model_comparison}
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model Type} & \textbf{Heterogeneity}& \textbf{Dynamic Feedback} & \textbf{Subsidy Optimisation}& \textbf{Provider Dynamics} \\
+\midrule
+Four-Step & No & No & No & No \\
+Activity-Based Models & Yes& Limited & Limited& Limited \\
+Other Agent Based Models& Limited& Yes & Limited & Limited \\
+\textbf{ABM-ETOP} & Yes & Yes & Yes& Yes \\
+\bottomrule
+\end{tabular}
+\footnotesize
+\texttt{Note: Comparison focuses on capabilities for FPS and PBS analysis. ABM-ETOP employs spatial and behavioural simplifications compared to established ABMs' comprehensive transport modelling capabilities.}
+\end{table}
+
+\section{The ABM-ETOP Framework: Conceptual Overview}\label{sec:framework}
+
+\subsection{Framework Architecture and Core Innovations}
+
+This section presents the comprehensive architecture and formal representation of the ABM-ETOP framework. As Figure~\ref{fig:overall_framework_architecture} illustrates, the framework systematically integrates agent-based modelling and Bayesian optimisation to evaluate subsidy allocation strategies across multiple dimensions.
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.9\textwidth]{1_abm_etop_framework_fixed.png}
+    \caption{ABM-ETOP Framework Architecture showing the integration of agent-based modeling with Bayesian optimisation for policy evaluation. The framework consists of four interacting layers: agent interactions, policy interventions, system-level outcomes, and optimisation processes.}
+    \label{fig:overall_framework_architecture}
+\end{figure}
+
+At the core of the ABM-ETOP framework lies a centralised agent-based architecture consisting of unique decision-making processes of three distinct agent types, as illustrated in Figure~\ref{fig:centralised_abm}: \textit{commuters}, \textit{service providers}, and \textit{MaaS agent}. \textit{Commuter agents} represent the individual travellers in the real world. They are differentiated by factors such as income level, value of time, and travel preferences. This differentiation is critical for understanding equity implications, as it enables a realistic representation of varied transport experiences across population segments and highlights how transport disadvantages are unevenly distributed, leading to disproportionate mobility constraints, particularly for low-income groups. The  \textit{MaaS agent} facilitates trip requests, option generation, subsidy application, and booking coordination across modes. The \textit{transport provider} agents represent different travel options, including car-share, bike-share and public transport. Each transport provider also dynamically updates their availability, pricing, and capacity based on evolving demand, competitive pressures, and policy interventions. By capturing these dynamic adaptations, the framework generates more realistic projections of how transport systems evolve in response to policy changes and evaluates the resulting distributional outcomes.
+
+The integration of agent-based simulation with Bayesian optimisation constitutes another methodological innovation of the ABM-ETOP framework. It helps find the best subsidy allocation strategies without needing to simulate every possible combination, saving tremendous computational time while still finding excellent solutions. This capability is crucial as it overcomes computational barriers that typically prevent systematic policy optimisation in large-scale transport models, thereby allowing more comprehensive evaluation of potential interventions within practical resource constraints.
+
+It simultaneously evaluates vertical equity (mode share equity and travel time equity across income groups) and horizontal equity (system-wide efficiency), enabling a nuanced assessment of how subsidy allocations impact different dimensions of transport justice. It moves beyond simplistic evaluations by recognising the multifaceted nature of equity, including accessibility, affordability, and temporal burdens across diverse segments. Through this comprehensive evaluation, transport authorities can better understand policy trade-offs and synergies.
+
+\subsection{Formal Representation of the ABM-ETOP Framework}\label{sec:simpleformula}
+
+To enhance conceptual clarity and establish formal parameters, this complex ABM-ETOP framework can be expressed as an transformation function:
+
+\begin{equation}
+\text{ABM-ETOP}(\mathbf{S}, \mathbf{P}, \mathbf{A}, \mathbf{E}) \rightarrow \mathbf{Y}
+\end{equation}
+
+The ABM-ETOP framework takes four strategically categorised parameter vectors as input. These are system parameters $\mathbf{S}$, which define behavioural mechanics like user sensitivity and value of time, and network characteristics; policy parameters $\mathbf{P}$, capturing intervention mechanisms, specifically the fixed pool subsidy amount and its allocation—the primary focus for optimisation; agent parameters $\mathbf{A}$, representing diverse stakeholders including heterogeneous commuters, service providers, and MaaS platform specifications; and environment parameters $\mathbf{E}$, establishing the spatiotemporal context of the network, activities, and demand. The detailed definition for each parameter class is provided in Appendix~\ref{app:param_specs} with comprehensive examples. 
+Through a systematic mapping process, the framework uses these inputs to generate an output vector $\mathbf{Y}$ containing three complementary performance metrics that collectively evaluate both vertical and horizontal equity:
+
+\begin{equation}
+\mathbf{Y} = \begin{bmatrix} E_{\text{mode}} \\ E_{\text{time}} \\ T_{\text{total}} \end{bmatrix}
+\end{equation}
+\subsubsection{Subsidy Policy Mechanisms}
+The ABM-ETOP framework explicitly models two complementary subsidy approaches: Fixed Pool Subsidy (FPS) and Percentage-Based Subsidy (PBS). These mechanisms are formally represented within the policy parameters vector $\mathbf{P}$:
+
+\begin{equation}
+\mathbf{P} = \begin{bmatrix} \text{FPS} \\ \mathbf{A} \end{bmatrix}
+\end{equation}
+
+The Fixed Pool Subsidy (FPS) establishes a predetermined financial allocation ($\text{FPS} \in \mathbb{R}^+$) representing the total budget available for transportation subsidies. Unlike open-ended subsidisation mechanisms, FPS operates within defined fiscal constraints, better reflecting real-world budgetary limitations faced by transportation authorities. This approach enables systematic evaluation of subsidy effectiveness across varying investment levels and facilitates direct comparison between different allocation strategies.
+
+The Percentage-Based Subsidy (PBS) is operationalised through the allocation matrix $\mathbf{A} = \{a_{i,m}\} \in [0,1]^{I \times M}$, which specifies subsidy percentages for each combination of income group $i \in I$ and transportation mode $m \in M$. This matrix governs what proportion of the original fare cost is subsidised for each population segment across every available transportation mode, enabling sophisticated targeting strategies that can vary by both socioeconomic status and mode choice.
+
+The allocation matrix is subject to two essential constraints. First, boundary constraints ($L_{i,m} \leq a_{i,m} \leq U_{i,m}$) establish permissible subsidy ranges for each income-mode combination, preventing practically infeasible solutions. Second, the budget constraint ensures total subsidies remain within the established FPS limit:
+
+\begin{equation}
+\sum_{i}\sum_{m}a_{i,m} \cdot C_{i,m} \cdot D_{i,m} \leq \text{FPS}
+\end{equation}
+
+Where $C_{i,m}$ represents the original cost of mode $m$ for income group $i$ and $D_{i,m}$ denotes the corresponding demand. This formulation enables the framework to model progressive subsidy strategies where disadvantaged populations receive proportionally higher support, in contrast to uniform subsidies that apply equal percentages regardless of socioeconomic status.
+
+For a given trip by a commuter in income group $i$ using mode $m$, the effective subsidized cost $C'_{i,m}$ is calculated as:
+
+\begin{equation}
+C'_{i,m} = C_{i,m} \cdot (1 - a_{i,m})
+\end{equation}
+
+The framework's integration of FPS and PBS mechanisms facilitates comprehensive exploration of equity-efficiency trade-offs across the subsidy parameter space, supporting evidence-based calibration of transportation policy interventions.
+
+\subsubsection{Evaluation Metrics}\label{sec:metricequations}
+
+One of three complementary metrics employed by the ABM-ETOP framework to evaluate both equity and efficiency dimensions of transport policies is the mode share equity metric ($E_{\text{mode}}$). It measures disparities in transport mode access across income groups:
+
+\begin{equation}
+E_{\text{mode}}(\mathbf{A}) = \sum_{i}w_i \cdot \sum_{m}\varphi(|s_{i,m} - \bar{s}_{m}|)
+\end{equation}
+
+In the equation, $w_i$ represents the population weight for income group $i$, $s_{i,m}$  is the mode share of mode $m$ for income group $i$, and $\bar{s}_{m}$ is the average mode share for mode $m$ across all income groups. Function $\varphi(x)$ provides appropriate scaling. A lower calculation result of the metric indicates a more equitable system regarding the mode choice whilst a theoretical minimum of zero represents perfect equity.
+
+The travel time equity metric ($E_{\text{time}}$) measures if the transport system is placing a heavier time burden on disadvantaged populations:
+
+\begin{equation}
+E_{\text{time}}(\mathbf{A}) = \sum_{i}|t_i - \bar{t}|
+\end{equation}
+
+Where $t_i$ is the average travel time for income group $i$ and $\bar{t}$ is the overall average travel time across all income groups. A lower value indicates smaller differences in average travel times between income groups, resulting a more equitable system. A theoretical minimum of zero representing perfect equality in temporal burdens.
+
+The total system travel time metric ($T_{\text{total}}$) evaluates system-wide efficiency by summing all the travel time by each commuter within the simulation period:
+
+\begin{equation}
+T_{\text{total}}(\mathbf{A}) = \sum_{i}\sum_{j}t_{i,j}
+\end{equation}
+
+In the qeuation, $t_{i,j}$ is the travel time for trip $j$ made by income group $i$. Lower values indicate a more efficient transport system with reduced overall travel time burdens, benefiting all users regardless of socioeconomic background. This metric also performs as a horizontal equity indicator for the system. 
+
+\subsection{ABM-ETOP Simulation Process and Decision Mechanisms}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{2_centralised_ABM.png}
+\caption{Centralised ABM-ETOP architecture showing interactions between commuter agents, the MaaS coordination agent, and transport provider agents. Commuters book through the MaaS platform, which facilitates communication with providers and processes trip requests.}
+\label{fig:centralised_abm}
+\end{figure}
+\begin{table}[width=\textwidth]
+\caption{Key Equations in the ABM}
+\label{tab:key_equations}
+\centering
+\begin{tabular}{|p{0.35\textwidth}|p{0.55\textwidth}|}
+\hline
+\textbf{Equation} & \textbf{Description} \\
+\hline
+$U_{i,j} = \text{ASC}_j + \beta_C \cdot (C_{i,j} - S_{i,j}) + \beta_T \cdot \text{VOT}_i \cdot T_{i,j} + \beta_W \cdot W_{i,j} + \beta_A \cdot A_{i,j}$ & Utility function for mode choice, incorporating mode constants, cost (adjusted by subsidies), time (weighted by income-specific VOT), modal penalties, and affordability adjustments. From \texttt{calculate\_generalized\_utility} in commuter agent. \\
+\hline
+$P(j|i) = \frac{\exp(U_{i,j})}{\sum_{k \in M} \exp(U_{i,k})}$ & Multinomial logit model for mode choice probabilities, implemented in \texttt{calculate\_mode\_choice\_probabilities} function. \\
+\hline
+$\text{VOT}_i = \text{VOT}_{\text{base},i} \cdot f_{\text{flexibility}}$ & Value of time calculation adjusted by trip flexibility from \texttt{get\_value\_of\_time} function. Values range from \$5 (low income) to \$20 (high income) per hour (base values, adjusted by flexibility factors). \\
+\hline
+$P_{\text{dynamic}} = P_{\text{base}} \cdot (1 + \alpha \cdot (DRC - DRC_{\text{base}}) \cdot (1 + \text{Demand}_{\text{change}}))$ & Dynamic pricing algorithm from \texttt{dynamic\_pricing\_share} in service provider agent, with $DRC$ as demand-to-capacity ratio. \\
+\hline
+$T_{\text{congested}} = T_{\text{free\_flow}} \times (1 + \alpha \times (\frac{V_{ij}}{C_{ij}})^{\beta})$ & BPR function for congestion modelling in \texttt{calculate\_congested\_travel\_time}, with parameters $\alpha=0.03$ and $\beta=1.5$. \\
+\hline
+$S_{i,j} = a_{c_i,m_j} \cdot C_{i,j}$ & Subsidy calculation based on income group $c_i$ and mode $m_j$, where $a_{c_i,m_j}$ is the subsidy percentage from the allocation matrix. Implemented in subsidy application mechanism. \\
+\hline
+$\text{subsidy\_available} = \begin{cases} 
+\text{True} & \text{if day\_of\_week} < 5 \text{ and pool\_remaining} > 0 \\
+\text{False} & \text{otherwise}
+\end{cases}$ & Subsidy availability logic from \texttt{is\_subsidy\_available} in subsidy pool agent, restricting subsidies to weekdays with remaining pool funds. \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[width=\textwidth]
+\caption{Algorithm 1 ABM-ETOP Simulation}
+\label{alg:abm-etop}
+\hrule height 1pt
+\vspace{0.5em}
+\begin{tabular}{p{0.06\textwidth}p{0.94\textwidth}}
+& $S = [\beta, \text{ASC}, \text{VOT}, N]$, $P = [\text{FPS}, A]$, $A = [C, \text{SP}, \text{SC}]$, $E = [G, T]$ \\
+1: & Instantiate agent populations $\mathcal{C}, \mathcal{P}, \mathcal{M}$ according to $A$ \\
+2: & \textbf{for} $t \in \{1,2,\ldots,T_{\text{max}}\}$ \textbf{do} \\
+3: & \hspace{1em} $R_t \gets \{r_1, r_2, \ldots, r_n\} \sim f(t, \mathcal{C})$ \textit{// Trip request generation} \\
+4: & \hspace{1em} \textbf{for} $r_i \in R_t$ \textbf{do} \\
+5: & \hspace{2em} $\Omega_i \gets \{(m_1, \rho_1), (m_2, \rho_2), \ldots, (m_k, \rho_k)\}$ \textit{// Mode-route pairs} \\
+6: & \hspace{2em} \textbf{for} $(m_j, \rho_j) \in \Omega_i$ \textbf{do} \\
+7: & \hspace{3em} $T_{i,j} \gets T_{i,j}^{\text{free}} \cdot (1 + \alpha \cdot (\frac{V_{i,j}}{C_{i,j}})^{\beta})$ \textit{// BPR function} \\
+8: & \hspace{3em} $S_{i,j} \gets a_{c_i,m_j} \cdot C_{i,j}$ \textit{// $c_i$ denotes income group} \\
+9: & \hspace{3em} $U_{i,j} \gets \text{ASC}_j + \beta_C(C_{i,j}-S_{i,j}) + \beta_T \cdot \text{VOT}_{c_i} \cdot T_{i,j} + \beta_W W_{i,j} + \beta_A A_{i,j}$ \\
+10: & \hspace{2em} \textbf{end for} \\
+11: & \hspace{2em} $j^* \gets \text{sample}(\{j | (m_j, \rho_j) \in \Omega_i\}, P)$ where $P(j) = \frac{\exp(U_{i,j})}{\sum_{k} \exp(U_{i,k})}$ \\
+12: & \hspace{2em} Update $V_{i,j^*}$ for all network segments in $\rho_{j^*}$ \\
+13: & \hspace{1em} \textbf{end for} \\
+14: & \hspace{1em} \textbf{for} $p \in \mathcal{P}$ \textbf{do} \\
+15: & \hspace{2em} $\text{DRC}_p \gets \frac{\text{Demand}_p}{\text{Capacity}_p}$ \\
+16: & \hspace{2em} $\text{Price}_p \gets \text{Price}_p^{\text{base}} \cdot (1 + \alpha_p \cdot (\text{DRC}_p - \text{DRC}_p^{\text{base}}) \cdot (1 + \Delta\text{Demand}_p))$ \\
+17: & \hspace{1em} \textbf{end for} \\
+18: & \textbf{end for} \\
+19: & $E_{\text{mode}} \gets \sum_{i} w_i \cdot \sum_{m} \phi(|s_{i,m} - \bar{s}_m|)$ \textit{// Mode share equity} \\
+20: & $E_{\text{time}} \gets \sum_{i} |t_i - \bar{t}|$ \textit{// Travel time equity} \\
+21: & $T_{\text{total}} \gets \sum_{i} \sum_{j} t_{i,j}$ \textit{// Total system travel time} \\
+22: & \textbf{return} $Y = [E_{\text{mode}}, E_{\text{time}}, T_{\text{total}}]$ \\
+\end{tabular}
+\vspace{0.5em}
+\hrule height 1pt
+\end{table}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{3_spatial_dist_current_income.png}
+\caption{Spatial distribution of commuter agents by income level within the 85×85 grid environment, showing the heterogeneous distribution of low, middle, and high-income agents alongside transport infrastructure (train and bus stations).}
+\label{fig:spatial_distribution}
+\end{figure}
+Following the mathematical concepts presented in Section \ref{sec:simpleformula}, this section provides a detailed description of the ABM-ETOP simulation process. This comprehensive computational approach operationalises the earlier concepts by integrating heterogeneous agent behaviours, dynamic system interactions, and policy interventions for realistic analysis of transport system dynamics and policy impacts. Figure~\ref{fig:spatial_distribution} illustrates the heterogeneous spatial distribution of commuter agents across different income levels within the simulation environment, demonstrating the framework's capacity to model diverse socioeconomic populations alongside transport infrastructure.
+
+The iterative simulation procedure, formalised in Algorithm 1 (Table~\ref{alg:abm-etop}), begins each time step with \textit{commuter agents} generating trip requests based on their socioeconomic characteristics and activity patterns (line 3). The system coordinator (i.e., \textit{MaaS agent}) then identifies available transport options and calculates route-specific metrics, including total travel time and total service cost, accounting for congestion effects (line 5). The transport options include all the available types, such as public transit (bus, train), ride-hailing services (car-sharing options like UberLike1 and UberLike2), bike-sharing services (BikeShare1 and BikeShare2), MaaS bundles (integrated multi-modal packages), and walking. The \textit{MaaS agent} implements two complementary algorithms for multi-modal routing: a modified Dijkstra's algorithm for private transport modes and the Round-Based Public Transit Optimised Router (RAPTOR) for public transit trips. These algorithms, detailed in Appendix~\ref{app:abm_development}, enable realistic modelling of complex journey patterns, including first/last mile connections and transfers between transit services. Subsidy policies are applied after \textit{MaaS agent} found available options for each of the active requests, based on the FPS value and PBS allocation matrix for the current simulaiton, modifying effective costs for each transport option (line 8). This process, detailed in Equation 6 of Table~\ref{tab:key_equations}, implements progressive subsidisation patterns that vary by income group and transport mode. Full details of the subsidy application mechanism are provided in Appendix~\ref{app:abm_development}. \textit{Commuter agents} then make decisions regarding mode choice using utility maximisation principles through the multinomial logit model (line 11). Importantly, behavioural parameters are specified to vary systematically across income groups—low-income commuters exhibit higher price sensitivity and lower time sensitivity compared to baseline, while high-income commuters demonstrate opposite tendencies. Parameter calibration details are provided in Appendix~\ref{app:calibration_validation}. After agents have made their travel decisions, the network traffic volumes are updated (line 12). This triggers dynamic adjustments within the system. Service providers adjust their pricing strategies based on demand and capacity utilisation, following the algorithm in lines 14-16, which establishes a feedback loop between demand and costs. Figure~\ref{fig:dynamic_pricing} demonstrates these dynamic pricing mechanisms in action, showing how shared mobility services (UberLike1, UberLike2, BikeShare1, BikeShare2) adjust prices in response to demand fluctuations and capacity constraints, with corresponding utilisation patterns clearly visible during peak periods. 
+
+Simultaneously, the \textit{MaaS agent} dynamically updates routing for car-sharing using the BPR function (line 7). As traffic loads accumulate, optimal paths are recalculated to circumvent congestion, resulting in emergent spatiotemporal traffic patterns where vehicles redistribute across the network. These dynamic routing adjustments create additional feedback loops between network conditions and travel behaviour, further influencing subsequent mode choices and mirroring real-world market adaptations. Once the simulation run is complete, the framework calculates the three key performance indicators formalised in Algorithm 1 (lines 19-21). These metrics, previously defined in Section \ref{sec:simpleformula}, serve as the output vector $\mathbf{Y}$, offering quantitative measures for assessing policy interventions across vertical and horizontal equity. The simulation process operates within a continuous feedback loop with the Bayesian optimisation component illustrated in Figure~\ref{fig:simple_flowchart}. Simulation outcomes feed into the optimisation process, which systematically evaluates results and adjusts policy parameters for subsequent iterations using Gaussian Process regression with an Expected Improvement acquisition function to efficiently explore the parameter space of possible subsidy allocations.
+
+The integration of agent-based simulation with Bayesian optimisation enables methodologically rigorous policy evaluation that captures complex interactions and feedback effects characteristic of real-world transport systems. Unlike traditional transport models that rely on simplified assumptions, this framework explicitly models heterogeneous behaviours, dynamic responses, and emergent properties, enabling more accurate assessment of how subsidy interventions affect different population segments and overall system performance.
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\textwidth]{4_dynamic_pricing_analysis.png}
+\caption{Dynamic pricing and service utilisation patterns over time, showing demand-responsive pricing for shared mobility services (BikeShare1, BikeShare2, UberLike1, UberLike2) and corresponding utilisation rates during peak periods (shaded areas).}
+\label{fig:dynamic_pricing}
+\end{figure}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\textwidth]{5_framework_simplified_flowchart.png}
+\caption{Process flow of the ABM-ETOP framework showing the continuous feedback loop between simulation and optimisation. The simulation results feed into the Bayesian optimisation process, which iteratively updates policy parameters to identify optimal subsidy allocation strategies.}
+\label{fig:simple_flowchart}
+\end{figure}
+
+\section{Optimisation Methodology}\label{sec:optimisation}
+
+\subsection{Bayesian Optimisation Implementation}
+
+\begin{table}[width=\textwidth]
+\caption{Algorithm 2 Subsidy Allocation Optimisation}
+\label{alg:subsidy-opt}
+\hrule height 1pt
+\vspace{0.5em}
+\begin{tabular}{p{0.06\textwidth}p{0.94\textwidth}}
+& \textbf{Require:} FPS range $\mathcal{F} = \{1000, 1500, \ldots, 8000\}$, objective set $\mathcal{O} = \{E_{\text{mode}}, E_{\text{time}}, T_{\text{total}}\}$ \\
+& \textbf{Ensure:} Optimal $(FPS^*, A^*)$ pairs for each objective \\
+1: & \textbf{for} $O \in \mathcal{O}$ \textbf{do} \\
+2: & \hspace{1em} $\mathcal{R}_O \gets \emptyset$ \textit{// Set of FPS-objective value pairs} \\
+3: & \hspace{1em} \textbf{for} $FPS \in \mathcal{F}$ \textbf{do} \\
+4: & \hspace{2em} $\mathcal{D} \gets \emptyset$ \textit{// Surrogate model training data} \\
+5: & \hspace{2em} Sample initial allocation matrices $A_1, A_2, \ldots, A_n$ where $L_{i,m} \leq a_{i,m} \leq U_{i,m}$ \\
+6: & \hspace{2em} \textbf{for} $k \in \{1, 2, \ldots, n\}$ \textbf{do} \\
+7: & \hspace{3em} $y_k \gets \text{ABM-ETOP}(S, [FPS, A_k], A, E)$ \\
+8: & \hspace{3em} $\mathcal{D} \gets \mathcal{D} \cup \{(A_k, O(y_k))\}$ \\
+9: & \hspace{2em} \textbf{end for} \\
+10: & \hspace{2em} Init $\mathcal{GP}$ with $\mathcal{D}$ using kernel $k(A, A') = \sigma^2 \exp(-\frac{1}{2l^2}||A-A'||^2)$ \\
+11: & \hspace{2em} \textbf{for} $i = 1$ to $N_{\text{iter}}$ \textbf{do} \\
+12: & \hspace{3em} $A_{\text{next}} \gets \arg\max_{A} \mathbb{E}[\max(f_{\min}-f(A), 0)]$ s.t. $L_{i,m} \leq a_{i,m} \leq U_{i,m}$ \\
+13: & \hspace{3em} $y_{\text{next}} \gets \text{ABM-ETOP}(S, [FPS, A_{\text{next}}], A, E)$ \\
+14: & \hspace{3em} $\mathcal{D} \gets \mathcal{D} \cup \{(A_{\text{next}}, O(y_{\text{next}}))\}$ \\
+15: & \hspace{3em} Update $\mathcal{GP}$ with new observation \\
+16: & \hspace{2em} \textbf{end for} \\
+17: & \hspace{2em} $A_{FPS}^* \gets \arg\min_{A \in \mathcal{D}} O(A)$ \\
+18: & \hspace{2em} $\mathcal{R}_O \gets \mathcal{R}_O \cup \{(FPS, O(A_{FPS}^*))\}$ \\
+19: & \hspace{1em} \textbf{end for} \\
+20: & \hspace{1em} $FPS_O^* \gets \arg\min_{FPS \in \mathcal{F}} \mathcal{R}_O(FPS)$ \\
+21: & \hspace{1em} $A_O^* \gets A_{FPS_O^*}^*$ \\
+22: & \textbf{end for} \\
+23: & Compute usage rates $U(FPS) = \frac{\text{Subsidies used}}{\text{FPS}} \cdot 100\%$ \\
+24: & Compute income group distribution $D_i = \frac{\text{Subsidies used by group }i}{\text{Total subsidies used}} \cdot 100\%$ \\
+25: & Identify optimal FPS range where $\frac{\partial O}{\partial FPS} < \varepsilon$ for all $O \in \mathcal{O}$ \\
+26: & \textbf{return} $(FPS_O^*, A_O^*)$ for each $O \in \mathcal{O}$ \\
+\end{tabular}
+\vspace{0.5em}
+\hrule height 1pt
+\end{table}
+
+The ABM-ETOP framework employs Bayesian optimisation with Gaussian Process regression to identify optimal subsidy allocation strategies. This approach can be formalized as finding the allocation matrix $\mathbf{A}^*$ that minimizes a target metric $M(\mathbf{A})$, representing one of our three policy objectives: mode share equity ($E_{\text{mode}}$), travel time equity ($E_{\text{time}}$), or total system travel time ($T_{\text{total}}$).
+
+\begin{equation}
+\mathbf{A}^* = \underset{\mathbf{A}}{\text{argmin}} \, M(\mathbf{A})
+\end{equation}
+
+The optimisation process follows a sequential approach outlined in Algorithm 2 (Table \ref{alg:subsidy-opt}). This method efficiently navigates the complex 12-dimensional space of subsidy percentages across income groups and transport modes. To ensure robust optimisation within practical computational constraints, the algorithm executes $N_{\text{iter}} = 144$ iterations per FPS value, beginning with $n = 10$ initial allocation matrices that satisfy boundary constraints. For each allocation matrix, the ABM simulation evaluates performance against the target metric, with results systematically stored in the training dataset $\mathcal{D}$.
+
+Addressing the considerable computational expense of ABM simulations, the Bayesian optimisation approach provides significant performance advantages over simpler methods such as grid search or random sampling. Leveraging sequential model-based optimisation, the framework efficiently identifies high-performing strategies, thereby minimising the computational resources required for optimisation.
+
+Underlying this efficient performance is a core methodology featuring a Gaussian process regression model, specifically selected with a Matérn kernel ($\nu = 2.5$) for its balance of smoothness and flexibility in transport policy modelling. The search is guided by the Expected Improvement acquisition function, which expertly balances exploration in less certain areas with exploitation in regions showing higher potential.
+
+The optimisation process systematically evaluates each objective across a range of FPS configurations. This evaluation serves to identify optimal allocation matrices and generate key implementation metrics, including subsidy usage rates and income group distributions. These practical metrics are designed to provide transport authorities with clear insights into policy effectiveness and distributional consequences.
+
+\subsection{Equilibrium Mechanisms and System Dynamics}
+A key advantage of the ABM-ETOP framework lies in the ability of its agent-based architecture to facilitate emergent phenomena that are difficult to represent in equation-based models. Properties such as socioeconomic stratification in mode choice, peak-period congestion patterns, and progressive subsidy utilisation emerge naturally from agent interactions, rather than through explicit programming. The capacity to capture such emergent properties is particularly valuable for subsidy policy evaluation, given that distributional outcomes significantly influence intervention effectiveness.
+
+These emergent properties arise from the framework's comprehensive representation of transport system dynamics, which models three interacting equilibrium processes—utility, market, and network—simultaneously, in contrast to sequential descriptions (Section \ref{sec:simpleformula}). Characteristic of real-world systems, threshold effects and non-linear responses are effectively captured by this integrated approach. This includes instances where policy interventions yield limited impact until critical thresholds are reached, leading to rapid transitions that linear extrapolation struggles to predict.
+
+Moving beyond the limitations of conventional equilibrium models, the ABM-ETOP framework offers a more nuanced basis for identifying optimal subsidy allocation strategies. This is achieved by integrating its capabilities to capture complex adaptive behaviours and recursive processes, which account for how individual decisions collectively shape system performance through multiple feedback cycles, leading to dynamic equilibrium states that reflect real-world transport system complexity.
+
+\section{Policy Analysis Results}\label{sec:results}
+we focused on examining how transport subsidies can address inequitable access to mobility options across income groups using the three evaluation metrics defined in Section \ref{sec:metricequations}. These simulations used a standardised 85×85 grid environment populated with 120 commuters from three income categories (low, middle, high) over a one-day period (144 time steps).
+
+The simulations were conducted using FPS values ranging from 1,000 to 8,000 units. While the simulation incorporates monetary values for calculations (e.g., Value of Time, service costs), the framework's simplified scale and abstract nature prevent direct translation of these units into specific real-world currencies like AUD. Therefore, the tested subsidy levels are expressed as percentages of an established baseline value. This baseline value is defined as the averaged total system travel cost derived from 10 control simulations under no-subsidy conditions (FPS = 0), which resulted in a mean of 5,560 units total system cost per simulation. Hence, the FPS values specifically range from 18.0\% of baseline total system costs (FPS 1,000) to 143.9\% (FPS 8,000). Table \ref{tab:fps_baseline} provides the complete mapping between FPS values and their corresponding percentages of baseline system costs. For each subsidy level, we used Bayesian optimisation to identify the allocation pattern across income groups and transport modes that best minimised each policy metric.
+
+\begin{table}[!ht]
+\centering
+\caption{FPS Values and Corresponding Percentages of Baseline System Costs}
+\label{tab:fps_baseline}
+\begin{tabular}{cc}
+\hline
+\textbf{FPS Value} & \textbf{Percentage of Baseline (\%)} \\
+\hline
+1,000 & 18.0 \\
+1,500 & 27.0 \\
+2,000 & 36.0 \\
+2,500 & 45.0 \\
+3,000 & 54.0 \\
+3,500 & 63.0 \\
+4,000 & 71.9 \\
+4,500 & 80.9 \\
+5,000 & 89.9 \\
+5,500 & 98.9 \\
+6,000 & 107.9 \\
+6,500 & 116.9 \\
+7,000 & 125.9 \\
+7,500 & 134.9 \\
+8,000 & 143.9 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Mode Share Equity Analysis}
+\subsubsection{Baseline Mode Share Disparities}
+
+\begin{table}[!t]
+\centering
+\caption{Baseline Mode Share Distribution by Income Group}
+\label{tab:baseline_mode_share}
+\begin{tabular}{lccc}
+\hline
+\textbf{Mode} & \textbf{Low Income (\%)} & \textbf{Middle Income (\%)} & \textbf{High Income (\%)} \\
+\hline
+Bike Services & 1.6 & 5.2 & 5.7 \\
+Car Services & 8.2 & 42.3 & 71.6 \\
+Public Transit & 11.5 & 10.3 & 9.1 \\
+Walking & 19.7 & 0.0 & 0.0 \\
+\hline
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:baseline_mode_share} demonstrated the pre-intervention unfairness in transport mode access. Car service usage displayed a 63.4 percentage point gap between high-income (71.6\%) and low-income commuters (8.2\%), highlighted inequity across transport modes. Low-income commuters rely heavily on walking (19.7\%) compared to other income groups (0\%), indicating limited mode choice. Analysis of temporal patterns (Figure~\ref{fig:baseline_mode_share_evolution}) confirmed that these disparities persisted across on-peak and off-peak periods, indicating systemic affordability constraints rather than supply-side variations in service availability.
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\textwidth]{6_mode_share_evolution.png}
+\caption{Mode Share Evolution by Income Group across simulation timeline, showing distinct patterns of transport mode usage between low, middle, and high-income populations. Low-income groups exhibit higher walking and transit dependence, while high-income groups show greater car usage.}
+\label{fig:baseline_mode_share_evolution}
+\end{figure}
+
+
+\subsubsection{Optimal Subsidy Allocation Results}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{7_optimal_mode_share_equity_vs_fps.png}
+\caption{Mode Share Equity Scores vs. Investment Levels, showing non-linear improvement pattern with diminishing returns beyond 32.8\% of total service costs}
+\label{fig:mode_share_equity_scores}
+\end{figure}
+
+
+We employed $E_{\text{mode}}$ defined in Equation 6 to quantify inequities in mode access across income groups, with lower values indicating greater equity. Our analysis identified the optimal allocation at 71.9\% of baseline costs (FPS 4,000), which reduced the equity score from 0.915 to 0.308—a 66.4\% improvement and the minimum achievable score (Figure~\ref{fig:mode_share_equity_scores}). 
+
+The FPS-equity relationship revealed a distinct non-linear elasticity pattern characterised by declining marginal returns. The elasticity of equity improvement relative to investment was highest (-0.697) between 36.0-53.9\% of baseline costs, declined substantially (-0.157) between 53.9-71.9\%, and turned positive (0.084) beyond the optimal point, indicating worsening outcomes with additional investment. This quantitative elasticity analysis confirms that the 53.9-71.9\% investment range represents the most efficient intervention zone. The most notable changes occurred for low-income commuters, whose car usage increased by 21.4 percentage points while walking decreased by 7.8 percentage points, indicating substantially improved mobility options. The car usage gap between high and low-income groups narrowed from 63.4 to just 8.6 percentage points, demonstrating significant progress toward mode access equity. This optimal subsidy allocation produced significant convergence in mode distribution across income groups (Table~\ref{tab:optimized_mode_share}).
+
+\begin{table}[!t]
+\centering
+\caption{Mode Share Distribution After Optimal Subsidy Allocation}
+\label{tab:optimized_mode_share}
+\begin{tabular}{lccc}
+\hline
+\textbf{Mode} & \textbf{Low Income (\%)} & \textbf{Middle Income (\%)} & \textbf{High Income (\%)} \\
+\hline
+Bike Services & 28.7 & 29.1 & 30.2 \\
+Car Services & 29.6 & 33.5 & 38.2 \\
+Public Transit & 29.8 & 27.6 & 24.3 \\
+Walking & 11.9 & 9.8 & 7.3 \\
+\hline
+\end{tabular}
+\end{table}
+
+
+\subsubsection{Implementation Efficiency and Distribution}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{8_subsidy_usage_percentage_mode_share.png}
+\caption{Subsidy Usage Patterns for Mode Share Equity, showing declining utilisation rates as investment levels increase}
+\label{fig:subsidy_usage_mode_share}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{9_subsidy_distribution_by_income_mode_share.png}
+\caption{Distribution of Used Subsidy by Income Group, showing consistent progressive pattern with low-income groups utilising the majority of available subsidies}
+\label{fig:subsidy_distribution_by_income_mode_share}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{10_percentage_unit_used_subsidy_mode_equity.png}
+\caption{Allocated vs. Actually Used Subsidies for Mode Share Equity Optimisation, showing the relationship between subsidy allocation and actual deployment, with peak usage at approximately 56\% of baseline system costs}
+\label{fig:allocated_vs_used_subsidies_mode_share}
+\end{figure}
+
+Subsidy utilisation analysis revealed critical implementation thresholds for transport authorities (Figure~\ref{fig:subsidy_usage_mode_share}). At lower allocation levels (18.0-27.0\% of baseline costs), subsidies achieved full utilisation (100\%), with actual deployment matching allocated amounts. However, utilisation efficiency declined progressively beyond this range: allocations of 45.0\% (FPS = 2,500) achieved 90.6\% utilisation, while the maximum allocation of 143.9\% (FPS = 8,000) achieved only 38.7\% utilisation.
+
+Figure~\ref{fig:allocated_vs_used_subsidies_mode_share} demonstrated the relationship between allocated and deployed subsidies. Actual subsidy utilisation peaked (FPS 7000) at approximately 56.2\% of baseline costs and plateaued thereafter, indicating a system saturation point beyond which additional allocations yield no incremental deployment. The optimal allocation of 71.9\% of baseline costs (FPS 4000) achieved 65.5\% utilisation, deploying 47.1\% of baseline costs as subsidies—a level that maintains efficiency while approaching maximum equity benefits.
+
+Income distribution patterns remained remarkably stable across all allocation levels (Figure~\ref{fig:subsidy_distribution_by_income_mode_share}). Low-income groups consistently utilised 60-69\% of deployed subsidies, middle-income groups 25-34\%, and high-income groups only 3-7\%. This consistency demonstrates that progressive targeting mechanisms function robustly regardless of total budget size, ensuring that additional allocations continue to benefit disadvantaged populations even as overall efficiency declines.
+
+\subsection{Travel Time Equity Analysis}
+
+\subsubsection{Baseline Travel Time Inequities}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.9\textwidth]{11_travel_time_distributions.png}
+\caption{Distribution of travel times by income group at baseline, showing significant disparities between high-income commuters (mean travel time of 8.3 minutes), middle-income commuters (19.7 minutes), and low-income commuters (30.9 minutes).}
+\label{fig:travel_time_distributions}
+\end{figure}
+
+
+Transport systems frequently impose unequal temporal burdens that limit access to opportunities for disadvantaged groups. Our baseline analysis revealed pre-intervention disparities (Figure~\ref{fig:travel_time_distributions}) that constrain daily mobility. High-income commuters averaged only 8.3 minutes per trip, while low-income commuters faced travel times of 30.9 minutes—a disparity ratio of 3.7:1 that translates to approximately 22.6 additional minutes of daily travel burden. Middle-income commuters averaged 19.7 minutes per trip. These differences produced a baseline travel time equity index of 20.79, quantifying the considerable vertical inequity in temporal burdens that transport policy must address.
+
+
+\subsubsection{Optimisation Approach and Results}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{12_travel_time_equity_VS_FPS.png}
+\caption{Travel Time Equity Index vs. Investment Levels, showing dramatic improvements between 10.9\% and 21.9\% of total service costs followed by diminishing returns.}
+\label{fig:travel_time_equity_FPS}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{13_average_travel_time_equity.png}
+\caption{Average Travel Times by Income Group before and after subsidy optimization, showing substantial reduction for low-income groups and convergence across income groups.}
+\label{fig:avg_travel_time_travel_equity}
+\end{figure}
+
+We employed $E_{\text{time}}$ defined in Equation 7 to measure differences in average travel times between income groups. This index quantifies vertical inequity, with lower values indicating better equities. As shown in Figure~\ref{fig:travel_time_equity_FPS}, the results discovered the optimal allocation at 71.9\% of baseline costs (FPS 4,000) reduced the  $E_{\text{time}}$ from 20.79 to 2.59, representing an 87.5\% improvement in vertical equity. This improvement followed a non-linear relationship with FPS values. During the initial investment phase (18.0\% to 36.0\% of baseline costs), a 10\% increase in subsidy allocation led to approximately a 7.1\% improvement in  $E_{\text{time}}$, demonstrating a moderate elasticity of -0.714. The elasticity was -0.567 when it was near optimal FPS values (36.0\% to 71.9\%), which showed slightly reduced responsiveness. When the FPS value was beyond the optimal point, the increased investments resulted in declining outcomes as the elasticity was positive (+0.329).
+
+The Figure~\ref{fig:avg_travel_time_travel_equity} demonstrated how the optimal FPS allocation represented the maximum minimisation of travel time gap across income groups. The intervention reduced travel time for low-income commuters largely by 44.9\% (from 30.9 to 17.0 minutes). In contrast, middle-income commuters experienced a modest 4.8\% reduction, while high-income commuters experienced a slight 7.7\% increase. Similar to the Mode Share Equity Analysis, the subsidy policy directly addresses vertical inequity by providing greater benefits to disadvantaged groups.
+
+\subsubsection{Implementation Efficiency}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{14_travel_time_equity_subsidy_usage_percentage.png}
+\caption{Percentage of Budget Used across different investment levels, showing declining utilization rates at higher investment levels.}
+\label{fig:travel_time_equity_subsidy_usage}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{15_travel_time_equity_distribution_income.png}
+\caption{Relative Distribution of Used Subsidy by Income Group, showing consistent progressive pattern with majority of subsidies utilized by low-income groups.}
+\label{fig:travel_time_equity_relative_subsidy_distribution}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{16_percentage_unit_used_subsidy_time_equity.png}
+\caption{Allocated vs. Actually Used Subsidies for Travel Time Equity Optimization, revealing capacity constraints and efficiency plateaus in subsidy utilisation}
+\label{fig:percentage_unit_used_subsidy_time_equity}
+\end{figure}
+Figure~\ref{fig:travel_time_equity_subsidy_usage} revealed that utilisation rates declined sharply as FPS values increase, from near-complete utilisation (100\%) at lower investment levels (FPS 1000-1500) to only 34.2\% at the highest allocation level (FPS 8000). At the optimal FPS value of 4000 (71.9\% of baseline system costs), approximately 69.4\% of available funds were utilised, indicating significant unused subsidy amounts even at the equity-optimised investment level. As shown in Figure~\ref{fig:percentage_unit_used_subsidy_time_equity}, actual subsidy utilisation plateaus around 44-50\% of baseline costs regardless of allocation levels beyond FPS 3000, translating the optimal allocation of 71.9\% into only 49.9\% actual utilisation. The plateau effect reveals vital policy implications for transport subsidy design. Allocations exceeding baseline system costs prove unrealistic, as shown by the persistent utilisation ceiling despite massive over-allocations at FPS 7000-8000 (125.9-143.9\% of baseline). The peak actual usage (49.9\% of baseline) occurs at the optimal equity point (FPS 4000, 71.9\% of baseline), creating a natural ceiling beyond which additional allocations produce diminishing or negative returns in subsidy utilisation. 
+
+The income distribution of subsidy benefits maintained a consistent progressive pattern across all investment levels (Figure~\ref{fig:travel_time_equity_relative_subsidy_distribution}). At the optimal FPS 4000, low-income users received 67\% of utilised subsidies, middle-income users 25\%, and high-income users 8\%. For public transit and MaaS bundles, which showed the strongest equity impacts, low-income users received subsidies of 60-70\% of fare costs, compared to 25-35\% for middle-income users and 5-10\% for high-income users. This allocation pattern demonstrates that addressing travel time disparities requires asymmetric intervention, but the capacity to deliver such intervention is constrained by fundamental absorption limits.
+
+\subsection{Total System Travel Time Analysis}
+
+\subsubsection{Optimisation Approach and Results}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{17_total_system_travel_time_vs_fps.png}
+\caption{Total System Travel Time vs. FPS values, showing significant reductions between 10.9\% and 21.9\% of total service costs followed by relatively stable performance.}
+\label{fig:total_travel_time}
+\end{figure}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{18_total_travel_time_by_income_linear.png}
+\caption{Travel Time by Income Level across investment levels, showing disproportionate burden on low-income groups and significant reductions with increasing subsidies.}
+\label{fig:total_travel_time_by_income}
+\end{figure}
+
+In this analysis, we employed $T_{\text{total}}$  defined in Equation 8 to quantify total system travel time, a representation of the horizontal equity and system efficiency. Figure~\ref{fig:total_travel_time} showed that the optimal allocation at 89.9\% of the baseline cost (FPS = 5,000)  reduced $T_{\text{total}}$ by 24.0\% from baseline. The relationship between the FPS values and  $T_{\text{total}}$ revealed three distinct phases. The initial phase (17.98\% to 35.97\%) showed a mild elasticity of 0.21, resulting a 21.3\% reduction (4,932 to 3,882 minutes). The middle phase (35.97\% to 89.93\%) demonstrated near-zero elasticity of 0.02, with minimal additional improvements despite increased investment value. The post-optimal phase (beyond 89.93\%) produced slightly negative elasticity (-0.03), indicating diminishing effectiveness. 
+
+The reduction in total system travel time is partly driven by shorter average trip durations resulting from increased FPS. Average trip time falls sharply from approximately 19.2 minutes at very low subsidies (below 18.0\% FPS) to 14.4 minutes as FPS reaches 36.0\%. Subsequent increases in FPS provide more modest gains, with average trip time bottoming out at around 13.8 minutes when FPS is 89.9\%, before slightly rising at higher subsidy levels. Trip volume climbs from approximately 259 trips at very low subsidies to around 270 by 36.0\% FPS, peaking at 275 trips when FPS is near 80.9\% (FPS 4,500). Beyond this peak, trip generation slightly declines and fluctuates, suggesting that while subsidies initially boost ridership, extremely high investment levels may encounter demand saturation or other limiting factors.
+
+The subsidy policy significantly impacts vertical equity by differentially affecting travel times across income groups (Figure~\ref{fig:total_travel_time_by_income}). Low-income travellers, who initially face the highest travel time burden (approximately 2,950 minutes), experience the most substantial benefits, with their aggregate travel time plummeting by roughly one-third (to 1,967 minutes) at higher FPS levels. The sharpest reductions for this group occur within the FPS range of 54.0\% (FPS 3,000) to 71.9\% (FPS 4,000) of baseline costs. In contrast, middle- and high-income users see more modest initial travel time reductions (around 21\% and 18\% respectively), with their benefits reversing to increasing travel times at higher subsidy levels. For instance, middle-income travel time increases from a minimum of 950 minutes (at 63.0\% FPS) to 1,080 minutes (at 125.9\% FPS), and high-income travel time rises from a low of 680 minutes (at 80.9\% FPS) to 762 minutes (at 125.9\% FPS). 
+
+
+\subsubsection{Implementation Efficiency and Income Distribution}
+
+Figure~\ref{fig:total_travel_time_subsidy_usage} deomstrated a plateau effect beyond 54\% of baseline costs. Full utilisation (94-100\%) occurred only at allocations up to 27\% of baseline costs and it declined significantly after. Actual subsidy usage peaked at 42.7\% of baseline costs (at FPS 3000), despite further increases in allocation (Figure~\ref{fig:percentage_unit_used_subsidy_total_travel_time}). This ceiling remained consistent, with actual usage stabilsing between 36-43\% of baseline costs across most higher FPS values (4000-8000). This pattern aligned with travel time reductions: the 17.98\% to 35.97\% allocation interval resulted a 21.3\% reduction, while improvements beyond the 44.96\% allocation level remained below 1\%.
+
+The distribution of used subsidies maintained a consistent pattern across all FPS values as shown in Figure~\ref{fig:total_travel_time_subsidy_distribution}. Low-income groups received the largest share (55-67\%), followed by middle-income groups (27-40\%) and high-income groups (3-9\%). 
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{19_percentage_unit_used_subsidy_total_travel_time.png}
+\caption{Allocated versus Actually Used Subsidies as percentage of baseline system costs, showing full utilization up to 27\% allocation, peak usage at 42.7\% of baseline costs, and usage plateau between 36-43\% despite increasing allocation levels}
+\label{fig:percentage_unit_used_subsidy_total_travel_time}
+\end{figure}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{20_total_travel_time_subsidy_usage_percentage.png}
+\caption{Percentage of Budget Used across investment levels, showing declining utilization rates at higher subsidy levels.}
+\label{fig:total_travel_time_subsidy_usage}
+\end{figure}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{21_total_travel_time_subsidy_distribution_by_income.png}
+\caption{Distribution of Used Subsidy by Income Group for total system travel time optimisation, showing progressive allocation pattern with low-income groups consistently utilising the majority of available subsidies across all FPS levels.}
+\label{fig:total_travel_time_subsidy_distribution}
+\end{figure}
+
+\section{Cross-Policy Synthesis}\label{sec:synthesis}
+
+\subsection{Comparative Analysis of Policy Approaches}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{22_optimal_fps_comparison.png}
+\caption{Comparison of Optimal FPS Values Across Policy Objectives, showing similar ranges despite different optimisation targets}
+\label{fig:optimal_fps_comparison}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{23_cross_policy_income_distribution_subsidies.png}
+\caption{Income Distribution of Subsidies at Optimal FPS Values, showing consistent progressive pattern across all policy objectives}
+\label{fig:cross_policy_income_distribution}
+\end{figure}
+
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{24_performance_tradeoffs.png}
+\caption{Identifying Optimal FPS Range for Multiple Objectives}
+\label{fig:tradeoffs}
+\end{figure}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{25_cross_objective_performers.png}
+\caption{Policies Performing Well Across Multiple Objectives, showing 4,000 FPS as optimal balance point}
+\label{fig:multi_objective}
+\end{figure}
+
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{26_decision_support_framework_fixed.png}
+\caption{Policy Recommendations Based on ABM-ETOP Analysis, providing guidance for different policy contexts and priorities}
+\label{fig:recommendations}
+\end{figure}
+
+Comparing optimisation outcomes across policy objectives reveals a surprising alignment that directly questions the conventional efficiency-equity trade-off (Figure \ref{fig:optimal_fps_comparison}). System efficiency optimisation required an 89.9\% subsidy allocation, a difference of just 18 percentage points from the 71.9\% needed for vertical equity objectives. This narrow gap refutes assumptions of inherent conflict between these goals \citep{Martens2016, Pereira2017}.
+
+A key finding, illustrated in Figure \ref{fig:cross_policy_income_distribution}, is the consistent progressive distribution of subsidies across all objectives. Low-income groups consistently received the largest share, ranging from 65.0-67.7\% for equity optimisation down to 55.4\% even when optimising purely for system efficiency. Conversely, high-income groups consistently received minimal shares (5.7-8.7\%), while middle-income groups showed the greatest variability (25.3-35.9\%) in their allocation. This pattern identifies the middle-income bracket as a potential "buffer zone" for balancing competing policy priorities without disrupting the overall progressive structure. Such empirical evidence strongly indicates that well-conceived subsidy structures can simultaneously achieve both social equity and economic efficiency, directly challenging the long-held view that efficiency-centred policies necessitate an equity sacrifice \citep{DiCiommo2017}. However, this economic-social synergy occurs alongside environmental trade-offs, as detailed in Section \ref{sec:competing-benefits}.
+
+Car subsidies for low-income groups consistently emerge as a critical component across all three optimisation approaches, reflecting automobile access's substantial impact on both equity and efficiency outcomes for disadvantaged populations. This finding matches with transport economics research underscoring car access's essential role in enabling economic mobility for low-income individuals \citep{Blumenberg2004, Smart2018}, while directly challenging conventional subsidy approaches that prioritise public transit exclusively for equity objectives.
+
+Effective subsidy deployment operates within specific boundaries, as validated by our analysis of implementation constraints. Within the 54.0-71.9\% of baseline costs range, high utilisation rates (70-80\%) are maintained alongside substantial performance gains across all metrics. However, exceeding this threshold leads to a marked decline in efficiency, particularly for Total System Travel Time optimisation, indicating that efficiency-focused subsidies become harder to implement effectively with increased allocation. The combined analytical findings consistently point to this range as offering an optimal balance across all objectives alongside efficient resource utilisation. Investments exceeding 71.9\% consistently yield diminishing returns, dropping below 0.01\% improvement per percentage point, thus establishing precise cost-effectiveness limits (Figures~\ref{fig:tradeoffs}, \ref{fig:multi_objective}, and \ref{fig:marginal_returns}). These empirically-derived parameters offer robust guidance for transport authorities, providing an evidence-based framework for integrating local priorities and contextual constraints. This is further illustrated by the decision support framework in Figure~\ref{fig:recommendations}.
+
+\subsection{Subsidy Investment Guidance}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=1\textwidth]{27_normalized_performance.png}
+\caption{Diminishing Returns Analysis Across Policy Objectives, showing S-curve pattern with steep improvement between 1,500-3,000 FPS followed by plateauing returns}
+\label{fig:dim_returns}
+\end{figure}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{28_marginal_returns_combined.png}
+\caption{Marginal Return on FPS Investment Across Policy Objectives, showing steep decline between 2,500-3,500 FPS units}
+\label{fig:marginal_returns}
+\end{figure}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{29_subsidy_usage_standalone.png}
+\caption{Subsidy Usage Across Policy Objectives}
+\label{fig:subsidy_usage_standalone}
+\end{figure}
+
+Figure~\ref{fig:dim_returns} illustrates a consistent S-shaped relationship between investment levels and normalised performance across all three policy objectives. This pattern moves from slow initial improvements (18.0-27.0\% of baseline) to steep gains (27.0-54.0\%), before performance flattens beyond 54.0-71.9\% of baseline costs. Such consistent behaviour across objectives suggests common underlying mechanisms for optimal transport subsidy investment. Empirically, the 54.0-71.9\% range represents a critical threshold where all three metrics achieve at least 90\% of their maximum potential improvement.
+
+Figure~\ref{fig:marginal_returns} details marginal returns. Travel Time Equity shows the highest initial improvement (peaking around 0.12\% per percentage point near 36.0\% of baseline), though Total System Travel Time consistently lags. A sharp decline in marginal returns affects all three metrics between 45.0\% and 63.0\% of baseline costs. Beyond 71.9\% of baseline costs, improvements across all objectives fall below 0.01\% per additional percentage point, signifying an economic threshold where further investment offers minimal system benefits.
+
+Subsidy utilisation rates consistently decline with increasing investment across all three metrics (Figure~\ref{fig:subsidy_usage_standalone}). While low investment levels (18.0-36.0\%) achieve near 100\% utilisation, higher levels (125.9-143.9\%) see a substantial drop to 30-40\%. This highlights the importance of the 54.0-71.9\% range, which maintains robust utilisation (70-80\%) alongside significant performance improvements. Interestingly, Total System Travel Time shows the steepest decline in utilisation, pointing to potential distribution challenges for efficiency-focused subsidies at elevated investment levels.
+
+Cumulatively, these findings establish the 54.0-71.9\% of baseline costs range as the optimal balance between performance improvement and resource utilisation efficiency. Investments below this (particularly 27.0-45.0\%) yield substantial but sub-optimal gains. Conversely, expenditure beyond 71.9\% consistently yields marginal returns below 0.01\% per percentage point, defining a cost-effectiveness upper threshold. The consistent pattern of declining utilisation rates above 71.9\% implies that higher investment would necessitate increasingly sophisticated targeting mechanisms, impacting program design and administrative complexity.
+
+\section{Policy Implications and Recommendations}\label{sec:implications}
+
+\subsection{Evidence-Based Subsidy Design Guidelines}
+
+Our analysis provides evidence-based guidelines for implementing equitable and efficient transport subsidy programmes. The optimal subsidy range, identified as 54.0-71.9\% of eligible transport service costs, effectively balances equity improvements with realistic budget constraints through significant, targeted investment. This range strategically avoids sub-optimal gains below 54.0\% and the rapid diminishing returns (below 0.01\% improvement per percentage point) observed beyond 71.9\%.
+
+For a medium-sized Australian city of 500,000 residents, applying this optimal range to an estimated annual eligible transport cost of AUD \$1,851 per capita (derived from ABS data and Australian transport patterns) suggests a recommended subsidy of AUD \$1,000-1,330 per capita annually. While our model uses a simplified grid, real-world applications demand adjusting these investment levels based on urban context. For example, per-capita rates could be 10-15\% lower for major metropolitan areas (due to density efficiencies) and 15-20\% higher for more dispersed regional centres. Cities with severe congestion or significant spatial inequality may also need investment at the higher end of this recommended range to achieve comparable equity outcomes.
+
+The optimisation results strongly advocate for a progressive allocation structure across income groups (Table \ref{tab:progressive_structure}). This structure prioritises low-income populations (55-65\% of total subsidies), provides moderate allocations to middle-income groups (25-35\% across modes), and assigns minimal shares to high-income users (5-10\%, primarily for sustainable options). This progressive approach proves optimal across all three policy objectives: mode share equity, travel time equity, and system efficiency. Even when optimising purely for system efficiency, such progressive targeting demonstrably enhances system performance, directly challenging conventional equity-efficiency trade-off assumptions in transport policy.
+
+Mode-specific targeting strategies are also crucial. Car subsidies for low-income users (50-65\% of fare costs) are consistently vital across all scenarios, directly challenging traditional subsidy approaches that often prioritise public transit exclusively. This highlights the crucial role of automobile access for economic mobility in disadvantaged populations, particularly in car-dependent suburban areas. Additionally, MaaS bundle subsidies (45-60\% for low-income users) offer a strategic opportunity for synergistic benefits. Public transit subsidy calibration requires context-sensitive implementation, with optimal allocations varying by urban type (e.g., 45-55\% for low-income users in major cities with extensive rail, 50-60\% for regional centres with bus systems). Bike-sharing systems, especially with e-bike options, offer cost-effective equity improvements at lower subsidy levels (40-50\%). These combined subsidies should be implemented as an integrated programme, recognising their complementary nature, which consistently outperformed single-mode strategies by increasing overall trip generation by 4.2\% at optimal subsidy levels.
+
+
+\begin{table}[H]
+\centering
+\caption{Progressive Allocation Structure}
+\label{tab:progressive_structure}
+\begin{tabular}{p{2.5cm}p{4cm}p{3cm}p{4cm}}
+\toprule
+\textbf{Income Group} & \textbf{Context} & \textbf{Recommended Subsidy Allocation} & \textbf{Mode-Specific Considerations} \\
+\midrule
+Low Income & Bottom third of income distribution & 55-65\% of total subsidies & Highest allocations for car services (50-65\%) and MaaS bundles (45-60\%) \\
+\midrule
+Middle Income & Middle third & 25-35\% of total subsidies & Moderate allocations across all modes (25-40\%) \\
+\midrule
+High Income & Top third & 5-10\% of total subsidies & Minimal allocations (5-20\%) with priority for bike-sharing \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Competing Benefits Analysis}\label{sec:competing-benefits}
+
+To understand the economic impact of transport subsidy investments, this section conducts a comprehensive competing benefits analysis, drawing on the ABM-ETOP framework. Focusing on a medium-sized city of 500,000 residents, we have translated the optimal subsidy range (54.0-71.9\% of eligible transport costs) into monetised benefits, supported by authoritative Australian data. Complete methodological details and assumptions underlying these calculations are presented in Appendix~\ref{app:competing-benefits-calculation}.
+
+\subsubsection{Programme Costs}
+
+Based on an estimated annual eligible transport expenditure of approximately AUD\$925 million for a city of this size \citep{ABS_HES_2024}, the optimal subsidy programme is projected to cost around AUD\$582.46 million annually. This figure encompasses both direct subsidy disbursements and associated administrative and transaction costs. For context, the direct subsidy costs are derived by multiplying the eligible transport costs (AUD\$925,268,850) by the midpoint of the optimal subsidy range (62.95\%), which results in AUD\$582,456,741. 
+
+\subsubsection{Economic Benefits: Valuing Travel Time Savings}
+
+The optimal subsidy programme significantly reallocates travel time across different income groups. To monetise the time saving benefits, we first established the total annual travel hours for the population (220,520,833 hours annually), based on an average of 2.5 trips per person per day and an average one-way trip duration of 29 minutes. The simulation results indicated a system-wide travel time reduction of 24.0\%. Multiplying this by the total baseline hours yields 52,925,000 hours in annual time savings. The income-standardised value of time (AUD\$18.80 per hour) by Transport for NSW \citep{TfNSW_2025} was then used to multiply with these net time savings, resulting in the finalised monetised benefit of AUD\$994.99 million annually.
+
+\subsubsection{Environmental Implications: A Notable Trade-Off}
+
+However, while the subsidy successfully advances equity outcomes, it concurrently leads to an increase in overall transport emissions. A net increase of 61,564 tonnes of CO$_2$ annually was revealed by detailed modal shift analysis. By applying the Australian Carbon Credit Unit prices \citep{CER_ACCU_2025} of AUD\$33.08 per tonne, this represents an increase in environmental cost of approximately AUD\$2.04 million per year. The programme results in a net increase of 61,564 tonnes of CO$_2$ annually.This increase stems from enhanced mobility and shifts between modes, which, despite their equity benefits, ultimately contribute to higher overall transport activity and associated emissions. Despite the environmental cost being modest relative to the substantial travel time benefits, it is imperative that future subsidy frameworks integrate stronger incentives for genuinely sustainable transport modes. This would ensure that equity improvements are accompanied by positive environmental externalities.
+
+\subsubsection{Net Benefits Assessment}
+
+Overall, the programmes generate net annual benefits of AUD\$992.95 million, far exceeding their direct costs. With a resultant benefit-cost ratio (BCR) of 1.70:1, every dollar invested in such initiatives delivers AUD\$1.70 in wider societal benefits.
+
+
+\subsection{Implementation Framework}
+
+This framework offers a pragmatic route for policymakers to achieve both vertical equity and enhanced system efficiency, thereby generating substantial economic benefits. Its phased approach, detailed in Table \ref{tab:implementation_framework}, strategically integrates technological infrastructure development with robust stakeholder engagement. This ensures not only technical capability but also broad community acceptance \cite{Quay2010}, translating evidence-based findings into tangible policy outcomes that maximise economic returns while significantly improving equity.
+
+To effectively monitor this programme, transport authorities should establish clear Key Performance Indicators (KPIs) across three critical dimensions. Firstly, equity impact metrics are crucial, such as mode share differentials between income groups, travel time ratios for low versus high-income users, and improved accessibility for disadvantaged communities. Secondly, system efficiency indicators should track overall travel time reductions, peak period congestion levels, increases in trip generation, and modal shift patterns. Finally, programme management metrics will assess subsidy utilisation rates, administrative cost ratios, enrollment rates among target populations, and user satisfaction scores.
+
+\begin{table}[htbp]
+\centering
+\caption{Phased Implementation Framework for Transport Subsidy Schemes}
+\label{tab:implementation_framework}
+\begin{tabular}{p{2.5cm}p{12cm}}
+\toprule
+\textbf{Phase} & \textbf{Key Activities} \\
+\midrule
+Foundation Building: 0--6 months & 
+\begin{itemize}
+    \item Establish data collection mechanisms for income verification
+    \item Develop technology infrastructure for applications processing
+    \item Engage with transport providers and community organizations
+    \item Design targeted pilot program for high-need groups
+\end{itemize} \\
+\midrule
+Pilot Run: 6--12 months & 
+\begin{itemize}
+    \item Roll out scheme on limited basis to target populations
+    \item Implement monitoring frameworks for utilization patterns
+    \item Collect user feedback through surveys and focus groups
+    \item Refine operational procedures based on initial experiences
+\end{itemize} \\
+\midrule
+Scaled Deployment: 12--24 months & 
+\begin{itemize}
+    \item Expand coverage to full population
+    \item Integrate all relevant transport modes
+    \item Implement dynamic allocation mechanisms
+    \item Coordinate with existing subsidy programs
+    \item Develop continuous improvement processes
+\end{itemize} \\
+\midrule
+System Integration: 24+ months & 
+\begin{itemize}
+    \item Integrate with MaaS platforms
+    \item Utilize predictive analytics for forecasting
+    \item Establish cross-jurisdictional coordination
+    \item Develop flexible frameworks for regional mobility
+\end{itemize} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\section{Conclusions}\label{sec:conclusions}
+
+\subsection{Summary of Key Findings}
+This research fundamentally re-evaluates conventional transport subsidy design, revealing that asymmetric allocation, rather than uniform distribution, is crucial for achieving equitable outcomes. Our findings demonstrate that progressive strategies, specifically directing 55\% to 65\% of subsidies towards low-income populations, not only maximise equity but also, counter-intuitively, enhance system-wide efficiency. This challenges the long-held assumption that social equity and economic performance goals in transport policy are inherently in conflict, though our analysis reveals that these economic-social synergies come with notable environmental costs that must be addressed through complementary sustainability measures.
+
+A remarkable consistency is observed as optimal outcomes converge within a narrow investment range, specifically 54-72\% of baseline transport costs. Within this bracket, both vertical equity measures and system performance metrics stabilise simultaneously, offering policymakers a clear target for implementation. Beyond this threshold, all metrics show diminishing returns, exhibiting less than 0.01\% improvement per percentage point of additional funding. This establishes an evidence-based ceiling for cost-effective investment.
+
+We identified a critical absorption barrier where utilisation efficiency sharply declines above optimal funding levels. This creates a plateau in actual subsidy deployment; despite increased allocation, the amount successfully delivered to users remains virtually unchanged. This ceiling effect, often overlooked in policy formulation, necessitates a rethink of how authorities approach subsidy programme scaling.
+
+Notably, car subsidies for low-income users consistently receive the highest optimal allocation percentages, typically between 50\% and 65\%, across all optimisation approaches. This directly challenges the conventional equity-focused approach that exclusively prioritises public transit. The superior performance of integrated multimodal approaches, particularly MaaS bundles, signals a necessary paradigm shift in transport equity – one that emphasises flexible mobility solutions over mode-specific interventions.
+
+Collectively, these findings establish that meaningful transport equity requires deliberately uneven intervention, providing substantially greater support to disadvantaged populations. The traditional pursuit of uniformity in subsidy design, rather than resolving structural disparities, often perpetuates them. Our evidence demonstrates that progressive allocation is not merely a social justice imperative; it is an efficiency requirement for creating transport systems that genuinely work for all users.
+
+\subsection{Methodological Contribution}
+Closing a critical methodological gap in transport policy analysis, the ABM-ETOP framework offers a novel approach to simultaneously understanding complex system dynamics, individual behavioural heterogeneity, and multi-dimensional equity outcomes. Its unique strength lies in the convergence of three established modelling paradigms: agent-based simulation , Bayesian optimisation, and multiple objectives evaluation. This integration provides the analytical sophistication required for robust transport equity research, yielding insights that were previously difficult to ascertain.
+
+A key innovation involves disaggregating both the population and the notion of equity. Instead of considering travellers as uniform groups or equity as a singular measure, we model individual agents possessing unique socioeconomic characteristics. This facilitates the simultaneous assessment of both vertical equity (mode share equity and travel time equity) and horizontal equity (system efficiency). This dual disaggregation uncovers subtle intervention strategies missed by conventional aggregate analyses.
+
+From a transport economics perspective, the combination of Bayesian optimisation and Gaussian Process regression presents a notable computational efficiency for policy analysis. This method allows for the effective exploration of the extensive range of potential subsidy allocations, an endeavour that conventional techniques would find computationally unfeasible. To illustrate, our framework assesses thousands of FPS and PBS permutations against diverse policy goals in mere hours, a task traditionally requiring weeks via grid-search approaches.
+
+Addressing the "implementation gap" in transport policy, as identified by \citet{Banister2008}, is a core strength of this framework. This gap refers to the disparity between ideal theoretical solutions and their practical implementation. Our approach bridges this divide by embedding realistic budgetary constraints via explicit subsidy allocation and converting complex mathematical outcomes into clear policy recommendations. This ensures that findings concerning FPS and PBS transition from abstract concepts to actionable strategies with defined parameters.
+
+A decisive advancement over both equation-based system dynamics and activity-based microsimulation approaches is the framework's bidirectional analysis capability. This models how system-level interventions affect individual outcomes and how individual responses collectively influence system performance. This unique capability reveals emergent phenomena, such as the plateau effect in subsidy absorption, which go unnoticed in unidirectional models.
+
+While previous research has addressed the equity implications of transport investments \citep{Pereira2017, Karner2020}, the ABM-ETOP framework stands out as the first comprehensive quantitative tool for optimising multi-dimensional subsidy allocations. This advancement allows for the evidence-based design of progressive subsidy structures, thereby filling a critical void in transport justice studies and policy implementation.
+
+\subsection{Limitations and Future Research}
+While our existing analytical framework provides a crucial foundation, it exhibits considerable limitations in accurately modelling the intricacies of urban transport dynamics. This, in turn, constrains its capacity to yield robust insights for policies prioritising equity.
+
+One key deficiency lies in its grid-based spatial representation, which is insufficient for capturing the intricate detail of urban networks. This limitation obstructs the precise identification of neighbourhood-specific impacts, which are essential for understanding transport inequities and revealing spatial disparities stemming from historical infrastructure choices. Equally concerning is the behavioural realism of our models. Our reliance on standard utility maximisation simplifies human decision-making, overlooking complexities such as habit formation, social influence, and cognitive biases. This produces an unrealistic depiction of agent behaviour, especially for disadvantaged groups whose mobility choices are often dictated by systemic barriers rather than pure economic preference. Therefore, the incorporation of GIS-integrated networks and more sophisticated behavioural modelling is essential for policy-relevant research.
+
+Moreover, the restricted scope of our evaluative metrics poses a considerable challenge. An exclusive focus on mode share equity, travel time equity, and system efficiency omits vital dimensions of transport justice that would undoubtedly reshape optimal allocation. Important considerations such as environmental justice, safety disparities, and procedural justice are notably absent, despite their profound implications for equitable outcomes. This narrow perspective curtails our capacity to devise truly equitable solutions.
+
+The current optimisation approach exhibits a fundamental static limitation. It struggles to adequately model the long-term, dynamic relationship between subsidy policies and urban development. This can result in an overestimation of immediate benefits, missing vital longer-term consequences that might either bolster or diminish equity improvements. The static nature, compounded by data scarcity regarding agent population dynamics, can artificially smooth out behavioural variations and distort optimisation results. Furthermore, the swift evolution of new mobility technologies challenges the framework's ability to accurately reflect shifting market structures, potentially rendering some optimised subsidy interventions obsolete post-implementation. Future research must incorporate dynamic land use-transport interaction models to overcome these key deficiencies.
+
+\section{Acknowledgments}
+
+This research was supported fully by the Australian Government through the Australian Research Council's Discovery Projects funding scheme (project DP210103138). The views expressed herein are those of the authors and are not necessarily those of the Australian Government or Australian Research Council.
+
+\section{Declaration of Generative AI and AI-assisted Technologies in the Writing Process}
+
+During the preparation of this work, the authors used Claude (Anthropic) in order to improve readability, language clarity, and manuscript formatting. After using this tool, the authors reviewed and edited the content as needed and take full responsibility for the content of the published article.
+
+\bibliographystyle{cas-model2-names}
+\bibliography{references}
+
+\clearpage
+
+
+\appendix
+\renewcommand{\thepage}{A-\arabic{page}}
+\setcounter{page}{1}
+
+
+\fancypagestyle{appendixstyle}{%
+  \fancyhf{}%
+  \fancyfoot[C]{Page \thepage\ of \pageref{LastAppendixPage}}%
+}
+
+
+\pagestyle{appendixstyle}
+
+\input{appendix}
+
+
+\label{LastAppendixPage}
+\end{document}

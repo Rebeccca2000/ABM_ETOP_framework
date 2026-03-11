@@ -1,0 +1,220 @@
+\begin{thebibliography}{24}
+\expandafter\ifx\csname natexlab\endcsname\relax\def\natexlab#1{#1}\fi
+\providecommand{\url}[1]{\texttt{#1}}
+\providecommand{\href}[2]{#2}
+\providecommand{\path}[1]{#1}
+\providecommand{\DOIprefix}{doi:}
+\providecommand{\ArXivprefix}{arXiv:}
+\providecommand{\URLprefix}{URL: }
+\providecommand{\Pubmedprefix}{pmid:}
+\providecommand{\doi}[1]{\href{http://dx.doi.org/#1}{\path{#1}}}
+\providecommand{\Pubmed}[1]{\href{pmid:#1}{\path{#1}}}
+\providecommand{\bibinfo}[2]{#2}
+\ifx\xfnm\relax \def\xfnm[#1]{\unskip,\space#1}\fi
+%Type = Article
+\bibitem[{Aftabuzzaman et~al.(2010)Aftabuzzaman, Currie and
+  Sarvi}]{AFTABUZZAMAN20101}
+\bibinfo{author}{Aftabuzzaman, M.}, \bibinfo{author}{Currie, G.},
+  \bibinfo{author}{Sarvi, M.}, \bibinfo{year}{2010}.
+\newblock \bibinfo{title}{Evaluating the congestion relief impacts of public
+  transport in monetary terms}.
+\newblock \bibinfo{journal}{Journal of Public Transportation}
+  \bibinfo{volume}{13}, \bibinfo{pages}{1--24}.
+\newblock \URLprefix
+  \url{https://www.sciencedirect.com/science/article/pii/S1077291X22002168},
+  \DOIprefix\doi{https://doi.org/10.5038/2375-0901.13.1.1}.
+%Type = Article
+\bibitem[{Allen and Farber(2019)}]{Allen2019}
+\bibinfo{author}{Allen, J.}, \bibinfo{author}{Farber, S.},
+  \bibinfo{year}{2019}.
+\newblock \bibinfo{title}{Sizing up transport poverty: A national scale
+  accounting of low-income households suffering from inaccessibility in canada,
+  and what to do about it}.
+\newblock \bibinfo{journal}{Transport Policy} \bibinfo{volume}{74},
+  \bibinfo{pages}{214--223}.
+%Type = Article
+\bibitem[{Auld et~al.(2016)Auld, Hope, Ley, Sokolov, Xu and Zhang}]{Auld2016}
+\bibinfo{author}{Auld, J.}, \bibinfo{author}{Hope, M.}, \bibinfo{author}{Ley,
+  H.}, \bibinfo{author}{Sokolov, V.}, \bibinfo{author}{Xu, B.},
+  \bibinfo{author}{Zhang, K.}, \bibinfo{year}{2016}.
+\newblock \bibinfo{title}{Polaris: Agent-based modeling framework development
+  and implementation for integrated travel demand and network and operations
+  simulations}.
+\newblock \bibinfo{journal}{Transportation Research Part C: Emerging
+  Technologies} \bibinfo{volume}{64}, \bibinfo{pages}{101--116}.
+\newblock \DOIprefix\doi{10.1016/j.trc.2015.07.017}.
+%Type = Techreport
+\bibitem[{Axhausen et~al.(2010)Axhausen, Meister, Balmer, Ciari, Horni, Rieser
+  and Waraich}]{Axhausen2010}
+\bibinfo{author}{Axhausen, K.W.}, \bibinfo{author}{Meister, K.},
+  \bibinfo{author}{Balmer, M.}, \bibinfo{author}{Ciari, F.},
+  \bibinfo{author}{Horni, A.}, \bibinfo{author}{Rieser, M.},
+  \bibinfo{author}{Waraich, R.A.}, \bibinfo{year}{2010}.
+\newblock \bibinfo{title}{Large-scale agent-based travel demand optimization
+  applied to Switzerland, including mode choice}.
+\newblock \bibinfo{type}{Working Paper} \bibinfo{number}{625}. ETH,
+  Eidgenössische Technische Hochschule Zürich, IVT, Institut für
+  Verkehrsplanung und Transportsysteme. \bibinfo{address}{Zürich}.
+\newblock \DOIprefix\doi{10.3929/ethz-a-006100288}.
+  \bibinfo{note}{online-Datei}.
+%Type = Article
+\bibitem[{Bazzan and Kl{\"u}gl(2014)}]{Bazzan2014}
+\bibinfo{author}{Bazzan, A.L.}, \bibinfo{author}{Kl{\"u}gl, F.},
+  \bibinfo{year}{2014}.
+\newblock \bibinfo{title}{A review on agent-based technology for traffic and
+  transportation}.
+\newblock \bibinfo{journal}{The Knowledge Engineering Review}
+  \bibinfo{volume}{29}, \bibinfo{pages}{375--403}.
+%Type = Article
+\bibitem[{Di~Ciommo and Shiftan(2017)}]{DiCiommo2017}
+\bibinfo{author}{Di~Ciommo, F.}, \bibinfo{author}{Shiftan, Y.},
+  \bibinfo{year}{2017}.
+\newblock \bibinfo{title}{Transport equity analysis}.
+\newblock \bibinfo{journal}{Transport Reviews} \bibinfo{volume}{37},
+  \bibinfo{pages}{139--151}.
+%Type = Article
+\bibitem[{Freedman et~al.(2025)Freedman, Ory and Gliebe}]{Freedman2025}
+\bibinfo{author}{Freedman, J.}, \bibinfo{author}{Ory, D.},
+  \bibinfo{author}{Gliebe, J.}, \bibinfo{year}{2025}.
+\newblock \bibinfo{title}{The state of activity-based modeling practice in the
+  united states}.
+\newblock \bibinfo{journal}{Transport Policy} \bibinfo{volume}{169},
+  \bibinfo{pages}{1--8}.
+\newblock \DOIprefix\doi{10.1016/j.tranpol.2025.04.020}.
+%Type = Book
+\bibitem[{Horni et~al.(2016)Horni, Nagel and Axhausen}]{Horni2016}
+\bibinfo{author}{Horni, A.}, \bibinfo{author}{Nagel, K.},
+  \bibinfo{author}{Axhausen, K.W.}, \bibinfo{year}{2016}.
+\newblock \bibinfo{title}{The Multi-Agent Transport Simulation MATSim}.
+\newblock \bibinfo{publisher}{Ubiquity Press}, \bibinfo{address}{London}.
+\newblock \URLprefix \url{http://dx.doi.org/10.5334/baw},
+  \DOIprefix\doi{10.5334/baw}. \bibinfo{note}{license: CC-BY 4.0}.
+%Type = Techreport
+\bibitem[{{International Transport Forum}(2024)}]{ITF2024}
+\bibinfo{author}{{International Transport Forum}}, \bibinfo{year}{2024}.
+\newblock \bibinfo{title}{The Future of Public Transport Funding}.
+\newblock \bibinfo{type}{ITF Research Reports}. International Transport Forum,
+  OECD. \bibinfo{address}{Paris}.
+%Type = Article
+\bibitem[{Jafari et~al.(2024)Jafari, Singh, Both, Abdollahyar, Gunn, Pemberton
+  and Giles-Corti}]{Jafari2024}
+\bibinfo{author}{Jafari, A.}, \bibinfo{author}{Singh, D.},
+  \bibinfo{author}{Both, A.}, \bibinfo{author}{Abdollahyar, M.},
+  \bibinfo{author}{Gunn, L.}, \bibinfo{author}{Pemberton, S.},
+  \bibinfo{author}{Giles-Corti, B.}, \bibinfo{year}{2024}.
+\newblock \bibinfo{title}{Activity-based and agent-based transport model of
+  melbourne: an open multi-modal transport simulation model for greater
+  melbourne}.
+\newblock \bibinfo{journal}{Journal of Intelligent Transportation Systems} ,
+  \bibinfo{pages}{1--18}\DOIprefix\doi{10.1080/15472450.2024.2372894}.
+%Type = Article
+\bibitem[{Kagho et~al.(2020)Kagho, Balac and Axhausen}]{Kagho2020}
+\bibinfo{author}{Kagho, G.O.}, \bibinfo{author}{Balac, M.},
+  \bibinfo{author}{Axhausen, K.W.}, \bibinfo{year}{2020}.
+\newblock \bibinfo{title}{Agent-based models in transport planning: Current
+  state, issues, and expectations}.
+\newblock \bibinfo{journal}{Procedia Computer Science} \bibinfo{volume}{170},
+  \bibinfo{pages}{726--732}.
+\newblock \DOIprefix\doi{10.1016/j.procs.2020.03.164}.
+%Type = Article
+\bibitem[{Litman(2025)}]{Litman2025}
+\bibinfo{author}{Litman, T.}, \bibinfo{year}{2025}.
+\newblock \bibinfo{title}{Evaluating transportation equity: Guidance for
+  incorporating distributional impacts in transport planning}.
+\newblock \bibinfo{journal}{Victoria Transport Policy Institute} .
+%Type = Article
+\bibitem[{Lucas(2012)}]{Lucas2012}
+\bibinfo{author}{Lucas, K.}, \bibinfo{year}{2012}.
+\newblock \bibinfo{title}{Transport and social exclusion: Where are we now?}
+\newblock \bibinfo{journal}{Transport Policy} \bibinfo{volume}{20},
+  \bibinfo{pages}{105--113}.
+%Type = Article
+\bibitem[{Lucas et~al.(2016)Lucas, Mattioli, Verlinghieri and
+  Guzman}]{Lucas2016}
+\bibinfo{author}{Lucas, K.}, \bibinfo{author}{Mattioli, G.},
+  \bibinfo{author}{Verlinghieri, E.}, \bibinfo{author}{Guzman, A.},
+  \bibinfo{year}{2016}.
+\newblock \bibinfo{title}{Transport poverty and its adverse social
+  consequences}.
+\newblock \bibinfo{journal}{Proceedings of the Institution of Civil Engineers -
+  Transport} \bibinfo{volume}{169}, \bibinfo{pages}{353--365}.
+%Type = Article
+\bibitem[{Martens(2006)}]{Martens2006}
+\bibinfo{author}{Martens, K.}, \bibinfo{year}{2006}.
+\newblock \bibinfo{title}{Basing transport planning on principles of social
+  justice}.
+\newblock \bibinfo{journal}{Berkeley Planning Journal} \bibinfo{volume}{19}.
+\newblock \URLprefix \url{https://escholarship.org/uc/item/0tg6v7tn},
+  \DOIprefix\doi{10.5070/BP319111486}.
+%Type = Book
+\bibitem[{Martens(2016)}]{Martens2016}
+\bibinfo{author}{Martens, K.}, \bibinfo{year}{2016}.
+\newblock \bibinfo{title}{Transport justice: Designing fair transportation
+  systems}.
+\newblock \bibinfo{publisher}{Routledge}.
+%Type = Article
+\bibitem[{Martens and Di~Ciommo(2017)}]{Martens2017b}
+\bibinfo{author}{Martens, K.}, \bibinfo{author}{Di~Ciommo, F.},
+  \bibinfo{year}{2017}.
+\newblock \bibinfo{title}{Travel time savings, accessibility gains and equity
+  effects in cost--benefit analysis}.
+\newblock \bibinfo{journal}{Transport Reviews} \bibinfo{volume}{37},
+  \bibinfo{pages}{152--169}.
+%Type = Incollection
+\bibitem[{McNally and Rindt(2007)}]{McNally2007b}
+\bibinfo{author}{McNally, M.}, \bibinfo{author}{Rindt, C.},
+  \bibinfo{year}{2007}.
+\newblock \bibinfo{title}{The activity-based approach}, in:
+  \bibinfo{editor}{Hensher, D.}, \bibinfo{editor}{Button, K.} (Eds.),
+  \bibinfo{booktitle}{Handbook of Transport Modelling}.
+  \bibinfo{publisher}{Emerald Group Publishing Limited},
+  \bibinfo{address}{Leeds}. volume~\bibinfo{volume}{1}, pp.
+  \bibinfo{pages}{55--73}.
+\newblock \DOIprefix\doi{10.1108/9780857245670-004}.
+%Type = Article
+\bibitem[{McNally(2007)}]{McNally2007a}
+\bibinfo{author}{McNally, M.G.}, \bibinfo{year}{2007}.
+\newblock \bibinfo{title}{The four-step model}.
+\newblock \bibinfo{journal}{Handbook of Transport Modelling}
+  \bibinfo{volume}{1}, \bibinfo{pages}{35--53}.
+%Type = Article
+\bibitem[{Pereira et~al.(2017)Pereira, Schwanen and Banister}]{Pereira2017}
+\bibinfo{author}{Pereira, R.H.}, \bibinfo{author}{Schwanen, T.},
+  \bibinfo{author}{Banister, D.}, \bibinfo{year}{2017}.
+\newblock \bibinfo{title}{Distributive justice and equity in transportation}.
+\newblock \bibinfo{journal}{Transport Reviews} \bibinfo{volume}{37},
+  \bibinfo{pages}{170--191}.
+%Type = Article
+\bibitem[{Titheridge et~al.(2014)Titheridge, Christie, Mackett, Hern{\'a}ndez
+  and Ye}]{Titheridge2014}
+\bibinfo{author}{Titheridge, H.}, \bibinfo{author}{Christie, N.},
+  \bibinfo{author}{Mackett, R.}, \bibinfo{author}{Hern{\'a}ndez, D.O.},
+  \bibinfo{author}{Ye, R.}, \bibinfo{year}{2014}.
+\newblock \bibinfo{title}{Transport and poverty: a review of the evidence}.
+\newblock \bibinfo{journal}{London: UCL Transport Institute, University College
+  London} .
+%Type = Article
+\bibitem[{van Wee and Geurs(2011)}]{vanWee2011}
+\bibinfo{author}{van Wee, B.}, \bibinfo{author}{Geurs, K.},
+  \bibinfo{year}{2011}.
+\newblock \bibinfo{title}{Discussing equity and social exclusion in
+  accessibility evaluations}.
+\newblock \bibinfo{journal}{European Journal of Transport and Infrastructure
+  Research} \bibinfo{volume}{11}, \bibinfo{pages}{350--367}.
+%Type = Article
+\bibitem[{Wong et~al.(2020)Wong, Hensher and Mulley}]{Wong2020}
+\bibinfo{author}{Wong, Y.Z.}, \bibinfo{author}{Hensher, D.A.},
+  \bibinfo{author}{Mulley, C.}, \bibinfo{year}{2020}.
+\newblock \bibinfo{title}{Mobility as a service (maas): Charting a future
+  context}.
+\newblock \bibinfo{journal}{Transportation Research Part A: Policy and
+  Practice} \bibinfo{volume}{131}, \bibinfo{pages}{5--19}.
+%Type = Article
+\bibitem[{Zhao and Li(2016)}]{Zhao2016}
+\bibinfo{author}{Zhao, P.}, \bibinfo{author}{Li, S.}, \bibinfo{year}{2016}.
+\newblock \bibinfo{title}{Restraining transport inequality in growing cities:
+  Can spatial planning play a role?}
+\newblock \bibinfo{journal}{International Journal of Sustainable
+  Transportation} \bibinfo{volume}{10}, \bibinfo{pages}{947--959}.
+
+\end{thebibliography}

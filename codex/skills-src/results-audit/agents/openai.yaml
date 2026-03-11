@@ -1,0 +1,4 @@
+interface:
+  display_name: "Results Audit"
+  short_description: "Verify paper claims against current outputs"
+  default_prompt: "Use $results-audit to check whether manuscript claims are still supported by the latest code and result files."

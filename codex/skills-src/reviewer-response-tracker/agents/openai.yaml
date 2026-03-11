@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reviewer Response Tracker"
+  short_description: "Maintain the rebuttal tracker and responses"
+  default_prompt: "Use $reviewer-response-tracker to update the reviewer matrix, response letter, and unresolved issue log consistently."

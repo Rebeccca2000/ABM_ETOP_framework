@@ -1,0 +1,4 @@
+interface:
+  display_name: "Figure Regeneration"
+  short_description: "Rebuild verified publication-ready figures"
+  default_prompt: "Use $figure-regeneration to regenerate a publication-ready figure from verified result tables and update the linked asset path."

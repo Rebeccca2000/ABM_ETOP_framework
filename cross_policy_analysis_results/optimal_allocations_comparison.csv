@@ -1,16 +1,37 @@
-Income Level,Mode,Mode Share Equity,Total System Travel Time,Travel Time Equity
-Low,bike,0.5792160394408812,0.5982374668530716,0.5
-Low,car,0.6856174151341234,0.5706890163064917,0.5
-Low,MaaS Bundle,0.560918091652836,0.6186523479305786,0.5
-Low,public,0.45889594082940544,0.48494302208057855,0.5
-Low,walk,0.0,0.0,0.5
-Middle,bike,0.40044036283673845,0.2936434881120148,0.3
-Middle,car,0.3228142764976517,0.37374012967096903,0.3
-Middle,MaaS Bundle,0.3591670900934917,0.3997415350256105,0.3
-Middle,public,0.2628010644670118,0.3680732500552077,0.3
-Middle,walk,0.0,0.0,0.3
-High,bike,0.07888909333550918,0.19545045716668008,0.1
-High,car,0.1285221765437425,0.04760967071116256,0.1
-High,MaaS Bundle,0.06697604986240194,0.05148482270510754,0.1
-High,public,0.1635990830318942,0.13089510866093806,0.1
-High,walk,0.0,0.0,0.1
+Policy Objective,Optimal FPS,allocation_key,mean,ci95_halfwidth
+Mode Share Equity,7500,high_MaaS_Bundle,0.311497,0.058766
+Mode Share Equity,7500,high_bike,0.296645,0.083291
+Mode Share Equity,7500,high_car,0.294028,0.057030
+Mode Share Equity,7500,high_public,0.489118,0.084961
+Mode Share Equity,7500,low_MaaS_Bundle,0.297190,0.068759
+Mode Share Equity,7500,low_bike,0.596349,0.053414
+Mode Share Equity,7500,low_car,0.772299,0.010872
+Mode Share Equity,7500,low_public,0.379457,0.052547
+Mode Share Equity,7500,middle_MaaS_Bundle,0.176657,0.073289
+Mode Share Equity,7500,middle_bike,0.580111,0.084897
+Mode Share Equity,7500,middle_car,0.587453,0.062717
+Mode Share Equity,7500,middle_public,0.498891,0.073316
+Travel Time Equity,6500,high_MaaS_Bundle,0.301598,0.076208
+Travel Time Equity,6500,high_bike,0.514663,0.087515
+Travel Time Equity,6500,high_car,0.336078,0.081357
+Travel Time Equity,6500,high_public,0.363538,0.084474
+Travel Time Equity,6500,low_MaaS_Bundle,0.418351,0.085904
+Travel Time Equity,6500,low_bike,0.534701,0.050426
+Travel Time Equity,6500,low_car,0.745914,0.024793
+Travel Time Equity,6500,low_public,0.500491,0.078735
+Travel Time Equity,6500,middle_MaaS_Bundle,0.313635,0.105706
+Travel Time Equity,6500,middle_bike,0.468148,0.078528
+Travel Time Equity,6500,middle_car,0.374562,0.077939
+Travel Time Equity,6500,middle_public,0.419311,0.060230
+Total System Travel Time,7500,high_MaaS_Bundle,0.349028,0.092018
+Total System Travel Time,7500,high_bike,0.484702,0.061371
+Total System Travel Time,7500,high_car,0.277795,0.077294
+Total System Travel Time,7500,high_public,0.612047,0.080530
+Total System Travel Time,7500,low_MaaS_Bundle,0.565900,0.080666
+Total System Travel Time,7500,low_bike,0.549138,0.048946
+Total System Travel Time,7500,low_car,0.563744,0.051315
+Total System Travel Time,7500,low_public,0.711463,0.046738
+Total System Travel Time,7500,middle_MaaS_Bundle,0.609904,0.064467
+Total System Travel Time,7500,middle_bike,0.457569,0.068741
+Total System Travel Time,7500,middle_car,0.340199,0.078649
+Total System Travel Time,7500,middle_public,0.545810,0.057272

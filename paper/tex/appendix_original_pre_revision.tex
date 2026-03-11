@@ -1,0 +1,1032 @@
+\appendix
+\section*{Appendices}
+\renewcommand{\thesection}{A\arabic{section}}
+\setcounter{section}{0}
+
+\section{Agent-Based Model Development}
+\label{app:abm_development}
+
+\subsection{Model Architecture and Agent Types}
+The ABM-ETOP framework employs a multi-agent architecture with three primary agent types interacting within a grid-based spatial environment. Each agent type has specific functions and behavioural characteristics:
+
+\subsubsection{Commuter Agents}
+Commuter agents represent individual transport users with heterogeneous socioeconomic attributes:
+\begin{itemize}
+    \item \textbf{Age:} distributed according to demographic patterns
+    \item \textbf{Disability status:} boolean attribute affecting mobility constraints
+    \item \textbf{Technology access:} boolean attribute affecting service usage capability
+    \item \textbf{Health status:} categorized as good or poor, affecting mode preferences
+    \item \textbf{Payment scheme:} PAYG or subscription, affecting pricing structure
+\end{itemize}
+
+\subsubsection{Service Provider Agents}
+Service provider agents manage transportation services with dynamic behaviours:
+\begin{itemize}
+    \item \textbf{Public transit:} fixed routes with time-dependent congestion patterns
+    \item \textbf{Car-sharing services:} dynamic availability and pricing
+    \item \textbf{Bike-sharing services:} location-based availability and dynamic pricing
+    \item \textbf{Walking:} always available with fixed speed characteristics
+\end{itemize}
+
+\subsubsection{MaaS Agent}
+The MaaS (Mobility-as-a-Service) agent serves as a system coordinator:
+\begin{itemize}
+    \item \textbf{Trip request processing:} matches commuter needs with available options
+    \item \textbf{Route optimisation:} generates efficient multi-modal routes
+    \item \textbf{Subsidy application:} implements subsidy policies across modes
+    \item \textbf{Service booking:} facilitates transactions between commuters and providers
+    \item \textbf{Congestion modeling:} captures traffic dynamics across the network
+\end{itemize}
+
+
+\subsection{Definitive Parameter Reference Table}
+\label{app:definitive_params}
+
+\begin{table}[!ht]
+\centering
+\caption{Definitive Model Parameters (Single Source of Truth)}
+\begin{tabular}{lccl}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Unit} & \textbf{Notes} \\
+\midrule
+\multicolumn{4}{l}{\textbf{Value of Time (Base)}} \\
+Low Income & 5.00 & \$/hour & Before flexibility adjustment \\
+Middle Income & 10.00 & \$/hour & Before flexibility adjustment \\
+High Income & 20.00 & \$/hour & Before flexibility adjustment \\
+\midrule
+\multicolumn{4}{l}{\textbf{Sensitivity Coefficients}} \\
+$\beta_C$ (Cost) & -0.15 & - & Base value \\
+$\beta_T$ (Time) & -0.06 & - & Base value \\
+$\beta_W$ (Modal) & -0.04 & - & Modal penalty \\
+$\beta_A$ (Affordability) & -0.02 & - & Affordability adjustment \\
+\midrule
+\multicolumn{4}{l}{\textbf{BPR Function}} \\
+$\alpha$ & 0.03 & - & Congestion parameter \\
+$\beta$ & 1.5 & - & Congestion parameter \\
+\midrule
+\multicolumn{4}{l}{\textbf{Key Results}} \\
+BCR & 1.70 & ratio & Benefit-cost ratio \\
+Travel Time Reduction & 24.0 & \% & System-wide improvement \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Commuter Decision-Making Process}
+\subsubsection{Utility Function Formulation}
+The core decision-making mechanism for commuter agents is based on a random utility maximisation framework. For each available transportation option, the utility is calculated as:
+
+\begin{equation}
+U_{i,j} = \text{ASC}_j + \beta_C \cdot (C_{i,j} - S_{i,j}) + \beta_T \cdot \text{VOT}_i \cdot T_{i,j} + \beta_W \cdot W_{i,j} + \beta_A \cdot A_{i,j}
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $U_{i,j}$: Utility of mode $j$ for commuter from income group $i$
+    \item $\text{ASC}_j$: Alternative-specific constant for mode $j$
+    \item $\beta_C$: Cost sensitivity coefficient (negative value)
+    \item $C_{i,j}$: Original cost of mode $j$ for income group $i$
+    \item $S_{i,j}$: Subsidy amount for mode $j$ and income group $i$
+    \item $\beta_T$: Time sensitivity coefficient (negative value)
+    \item $\text{VOT}_i$: Value of time for income group $i$
+    \item $T_{i,j}$: Travel time for mode $j$
+    \item $\beta_W$: Modal penalty coefficient
+    \item $W_{i,j}$: Modal penalty for mode $j$ (e.g., disability accessibility)
+    \item $\beta_A$: Affordability coefficient
+    \item $A_{i,j}$: Affordability adjustment for mode $j$
+\end{itemize}
+
+\subsubsection{Modal Choice Probability}
+The probability of selecting each transportation mode is calculated using the multinomial logit model:
+
+\begin{equation}
+P(j|i) = \frac{\exp(U_{i,j})}{\sum_{k \in M} \exp(U_{i,k})}
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $P(j|i)$: Probability of commuter from income group $i$ choosing mode $j$
+    \item $M$: Set of all available modes
+\end{itemize}
+
+\subsubsection{Value of Time Calculation}
+The value of time (VOT) is income-dependent and adjusted by trip purpose flexibility:
+
+\begin{equation}
+\text{VOT}_i = \text{VOT}_{\text{base},i} \cdot f_{\text{flexibility}}
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $\text{VOT}_{\text{base},i}$: Base value of time for income group $i$
+    \item $f_{\text{flexibility}}$: Adjustment factor based on trip purpose flexibility
+\end{itemize}
+
+The base values of time used in the model are:
+\begin{itemize}
+    \item Low income: \$5 per hour 
+    \item Middle income: \$10 per hour 
+    \item High income: \$20 per hour 
+\end{itemize}
+
+The flexibility adjustment factors vary by trip purpose:
+\begin{itemize}
+    \item Low flexibility (work, school, medical): 1.15
+    \item Medium flexibility (default): 1.00
+    \item High flexibility (shopping, leisure): 0.85
+\end{itemize}
+
+\subsubsection{Trip Generation Algorithm}
+Commuter agents generate trip requests based on their socioeconomic characteristics and temporal patterns, implemented as follows:
+
+\begin{algorithm}
+\caption{Stochastic Trip Generation with Socioeconomic Stratification}
+\label{alg:trip-generation}
+\begin{algorithmic}[1]
+\Require Commuter agent $c$, current time $t$, demographic parameters $\Theta_c$
+\Ensure Trip request $r$ or $\emptyset$
+\State $P_{base} \gets$ ComputeBaseProbability($\Theta_c$.income, $\Theta_c$.age, $\Theta_c$.disability)
+\State $\mu_{temporal} \gets$ TemporalMultiplier($t$, WeekdayStatus($t$))
+\If{WeekdayStatus($t$) = weekend}
+    \State $\mu_{temporal} \gets \mu_{temporal} \times$ GaussianKernel($t_{midday}$, $\sigma_{weekend}$)
+\Else
+    \State $\mu_{temporal} \gets \max($GaussianKernel($t_{morning}$, $\sigma_{peak}$), GaussianKernel($t_{evening}$, $\sigma_{peak}$), $\epsilon_{base})$
+\EndIf
+\State $P_{trip} \gets P_{base} \times \mu_{temporal} \times$ PaymentSchemeMultiplier($\Theta_c$.payment)
+\If{$\text{uniform}(0,1) < P_{trip}$ and $\neg$HasActiveRequest($c$)}
+    \State $\tau_{purpose} \gets$ SelectTravelPurpose($t$, $\Theta_c$)
+    \State $d \gets$ GenerateDestination($\tau_{purpose}$, $c$.location, $\Theta_c$)
+    \State $t_{start} \gets t + \text{uniform}(\Delta t_{min}, \Delta t_{max})$
+    \State $r \gets$ CreateRequest(GenerateUUID(), $c$.location, $d$, $t_{start}$, $\tau_{purpose}$)
+    \State \Return $r$
+\EndIf
+\State \Return $\emptyset$
+\end{algorithmic}
+\end{algorithm}
+
+The function $\texttt{calculateTimeMultiplier}(t)$ models temporal patterns by applying a non-uniform distribution across the day:
+
+\begin{equation}
+\texttt{time\_multiplier} = 
+\begin{cases}
+3.0 \cdot \exp\left(-0.5 \cdot \left(\frac{t_{\text{day}} - 48}{8}\right)^2\right) & \text{for morning peak} \\
+2.5 \cdot \exp\left(-0.5 \cdot \left(\frac{t_{\text{day}} - 105}{10}\right)^2\right) & \text{for evening peak} \\
+\max(\text{morning\_intensity}, \text{evening\_intensity}, 0.2) & \text{for weekdays} \\
+1.5 \cdot \exp\left(-0.5 \cdot \left(\frac{t_{\text{day}} - 72}{16}\right)^2\right) & \text{for weekends}
+\end{cases}
+\end{equation}
+
+Where $t_{\text{day}}$ is the time of day (modulo 144 ticks, with each tick representing 10 minutes).
+
+\subsection{MaaS Agent Algorithms}
+\subsubsection{Congestion Modeling}
+
+The MaaS agent employs the Bureau of Public Roads (BPR) function to model congestion effects on travel times:
+
+\begin{equation}
+T_{ij} = T_{ij\_\text{free\_flow}} \times \left(1 + \alpha \times \left(\frac{V_{ij}}{C_{ij}}\right)^{\beta}\right)
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $T_{ij}$: Congested travel time between points $i$ and $j$
+    \item $T_{ij\_\text{free\_flow}}$: Free-flow travel time between points $i$ and $j$
+    \item $\alpha$: Congestion parameter (0.03 in the model)
+    \item $\beta$: Congestion parameter (1.5 in the model)
+    \item $V_{ij}$: Traffic volume between points $i$ and $j$
+    \item $C_{ij}$: Capacity between points $i$ and $j$
+\end{itemize}
+
+\subsubsection{Traffic Volume Calculation}
+The MaaS agent determines the current traffic volume by aggregating all active bookings affecting a particular network segment:
+
+\begin{algorithm}
+\caption{Dynamic Traffic Volume Aggregation}
+\label{alg:traffic-aggregation}
+\begin{algorithmic}[1]
+\Require Current time step $t$, active booking set $\mathcal{B}$
+\Ensure Traffic volume mapping $\mathcal{V}: E \rightarrow \mathbb{N}$
+\State $\mathcal{V} \gets \{\}$, $\mathcal{S}_{processed} \gets \emptyset$
+\For{$b \in \mathcal{B}$ where $t \in b$.AffectedSteps}
+    \State $\rho \gets b$.RouteDetails
+    \For{$i \gets 0$ to $|\rho| - 2$}
+        \State $e \gets (\rho[i], \rho[i+1])$, $e_{rev} \gets (\rho[i+1], \rho[i])$
+        \If{$e \notin \mathcal{S}_{processed}$}
+            \State $\mathcal{S}_{processed} \gets \mathcal{S}_{processed} \cup \{e, e_{rev}\}$
+            \State $\mathcal{V}[e] \gets \mathcal{V}[e] + 1$
+            \State $\mathcal{V}[e_{rev}] \gets \mathcal{V}[e_{rev}] + 1$
+        \EndIf
+    \EndFor
+\EndFor
+\State \Return $\mathcal{V}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Modified Dijkstra's Algorithm with Congestion}
+The MaaS agent uses a modified Dijkstra's algorithm to find shortest paths while accounting for congestion:
+
+\begin{algorithm}
+\caption{Congestion-Aware Shortest Path Algorithm}
+\label{alg:congestion-dijkstra}
+\begin{algorithmic}[1]
+\Require Graph $G = (V, E)$, source $s$, target $e$, mode $m$, traffic state $\mathcal{V}$
+\Ensure Shortest path $\pi^*$ or fallback path
+\State $d \gets$ InitializeDistances($V$, $s$), $\pi \gets \{\}$
+\State $Q \gets$ PriorityQueue(), $Q$.insert($(0, s)$)
+\State $\mathcal{V}_{traffic} \gets$ GetTrafficVolume($t$)
+\While{$Q \neq \emptyset$}
+    \State $(d_{curr}, v_{curr}) \gets Q$.extractMin()
+    \If{$v_{curr} = e$}
+        \State \textbf{break}
+    \EndIf
+    \For{$v_{next} \in$ Neighbors($v_{curr}$)}
+        \State $w_{edge} \gets$ ComputeEdgeWeight($v_{curr}$, $v_{next}$, $m$, $\mathcal{V}_{traffic}$)
+        \If{$m =$ CAR\_MODE}
+            \State $w_{edge} \gets w_{free} \times \text{BPR}(\mathcal{V}_{traffic}[(v_{curr}, v_{next})], C_{edge})$
+        \EndIf
+        \If{$d_{curr} + w_{edge} < d[v_{next}]$}
+            \State $d[v_{next}] \gets d_{curr} + w_{edge}$
+            \State $\pi[v_{next}] \gets v_{curr}$
+            \State $Q$.insert($(d[v_{next}], v_{next})$)
+        \EndIf
+    \EndFor
+\EndWhile
+\State \Return ReconstructPath($\pi$, $s$, $e$) $\lor$ ManhattanFallback($s$, $e$)
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Multi-Modal Route Generation}
+For public transportation and MaaS options, the algorithm consists of two phases: finding the optimal sequence of public transport services, and building a detailed itinerary with access/egress modes:
+
+\begin{algorithm}
+\caption{Multi-Modal Public Transport Route Discovery}
+\label{alg:multimodal-routing}
+\begin{algorithmic}[1]
+\Require Origin $o$, destination $d$, station network $\mathcal{S}$, route network $\mathcal{R}$, transfer network $\mathcal{T}$
+\Ensure Optimal station sequence $\sigma^*$ or $\emptyset$
+\State $(m_o, s_o) \gets$ FindNearestStation($o$, $\mathcal{S}$)
+\State $(m_d, s_d) \gets$ FindNearestStation($d$, $\mathcal{S}$)
+\State $\tau \gets$ InitializeArrivalTimes($\mathcal{S}$), $\tau[s_o] \gets 0$
+\State $\Pi \gets \{\}$, $Q \gets$ PriorityQueue()
+\State $Q$.insert($(0, s_o)$)
+\While{$Q \neq \emptyset$ and $Q$.top().station $\neq s_d$}
+    \State $(t_{curr}, s_{curr}) \gets Q$.extractMin()
+    \For{$m \in \{\text{BUS}, \text{TRAIN}\}$}
+        \For{$r \in$ GetRoutesThrough($m$, $s_{curr}$)}
+            \State $\sigma_r \gets \mathcal{R}[m][r]$
+            \State $idx \gets$ IndexOf($s_{curr}$, $\sigma_r$)
+            \For{$s_{next} \in$ AdjacentStations($\sigma_r$, $idx$)}
+                \State $t_{arr} \gets t_{curr} + \text{STOP\_TIME}$
+                \If{$t_{arr} < \tau[s_{next}]$}
+                    \State $\tau[s_{next}] \gets t_{arr}$, $\Pi[s_{next}] \gets s_{curr}$
+                    \State $Q$.insert($(t_{arr}, s_{next})$)
+                \EndIf
+            \EndFor
+        \EndFor
+    \EndFor
+    \For{$(s_{transfer}, t_{transfer}) \in \mathcal{T}[s_{curr}]$}
+        \State $t_{arr} \gets t_{curr} + t_{transfer}$
+        \If{$t_{arr} < \tau[s_{transfer}]$}
+            \State $\tau[s_{transfer}] \gets t_{arr}$, $\Pi[s_{transfer}] \gets s_{curr}$
+            \State $Q$.insert($(t_{arr}, s_{transfer})$)
+        \EndIf
+    \EndFor
+\EndWhile
+\State \Return ReconstructPath($\Pi$, $s_o$, $s_d$)
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Round-Based Public Transit Optimized Router (RAPTOR)}
+\label{alg:raptor}
+\begin{algorithmic}[1]
+\Require Origin $o$, destination $d$, departure time $\tau_0$, route network $\mathcal{R}$, stop network $\mathcal{S}$
+\Ensure Pareto-optimal journey set $\mathcal{J}^*$
+\State $\tau^{(0)} \gets$ InitializeArrivalTimes($\mathcal{S}$, $\infty$)
+\State $\tau^{(0)}[$ NearestStop($o$)$] \gets \tau_0$
+\State $\mathcal{J}^* \gets \emptyset$, $k \gets 0$
+\Repeat
+    \State $k \gets k + 1$
+    \State $\tau^{(k)} \gets \tau^{(k-1)}$ \Comment{Initialize round $k$}
+    \State $\mathcal{Q} \gets \emptyset$ \Comment{Queue of marked stops}
+    \Comment{Accumulate routes serving marked stops}
+    \For{$s \in \mathcal{S}$ where $\tau^{(k-1)}[s] < \tau^{(k-2)}[s]$}
+        \For{$r \in$ RoutesServing($s$)}
+            \State $\mathcal{Q} \gets \mathcal{Q} \cup \{r\}$
+        \EndFor
+    \EndFor
+    \Comment{Traverse each marked route}
+    \For{$r \in \mathcal{Q}$}
+        \State $t_{board} \gets \infty$, $s_{board} \gets \emptyset$
+        \For{$s \in$ StopsOf($r$) in route order}
+            \If{$\tau^{(k-1)}[s] < t_{board}$}
+                \State $t_{board} \gets \tau^{(k-1)}[s]$, $s_{board} \gets s$
+            \EndIf
+            \If{$s_{board} \neq \emptyset$ and CanReach($s_{board}$, $s$, $r$)}
+                \State $t_{arr} \gets t_{board} +$ TravelTime($s_{board}$, $s$, $r$)
+                \If{$t_{arr} < \tau^{(k)}[s]$}
+                    \State $\tau^{(k)}[s] \gets t_{arr}$
+                \EndIf
+            \EndIf
+        \EndFor
+    \EndFor
+    \Comment{Handle footpath transfers}
+    \For{$s \in \mathcal{S}$ where $\tau^{(k)}[s] < \tau^{(k-1)}[s]$}
+        \For{$s' \in$ FootpathReachable($s$)}
+            \State $t_{arr} \gets \tau^{(k)}[s] +$ WalkTime($s$, $s'$)
+            \State $\tau^{(k)}[s'] \gets \min(\tau^{(k)}[s'], t_{arr})$
+        \EndFor
+    \EndFor
+    \Comment{Update destination arrivals}
+    \State $s_d \gets$ NearestStop($d$)
+    \If{$\tau^{(k)}[s_d] < \infty$}
+        \State $\mathcal{J}^* \gets \mathcal{J}^* \cup \{(\tau^{(k)}[s_d], k)\}$
+    \EndIf
+\Until{$\tau^{(k)} = \tau^{(k-1)}$ or $k > k_{max}$}
+\State \Return ExtractParetoOptimal($\mathcal{J}^*$)
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Service Provider Agent Algorithms}
+\subsubsection{Dynamic Pricing Algorithm}
+The service provider agent applies dynamic pricing based on demand-to-capacity ratios:
+
+\begin{equation}
+P_{\text{dynamic}} = P_{\text{base}} \cdot \left(1 + \alpha \cdot (DRC - DRC_{\text{base}}) \cdot (1 + \text{Demand}_{\text{change}})\right)
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $P_{\text{dynamic}}$: Adjusted dynamic price
+    \item $P_{\text{base}}$: Base price for the service
+    \item $\alpha$: Provider-specific sensitivity coefficient (0.25-0.5)
+    \item $DRC$: Current demand-to-capacity ratio
+    \item $DRC_{\text{base}}$: Baseline demand-to-capacity ratio (typically 0.5)
+    \item $\text{Demand}_{\text{change}}$: Rate of change in demand
+\end{itemize}
+
+\begin{algorithm}
+\caption{Demand-Responsive Dynamic Pricing}
+\label{alg:dynamic-pricing}
+\begin{algorithmic}[1]
+\Require Service provider set $\mathcal{P}$, current step $t$, demand history $\mathcal{H}$
+\Ensure Updated pricing matrix $\mathbf{P}^{(t+1)}$
+\For{$p \in \mathcal{P}$}
+    \State $\alpha_p \gets$ GetSensitivityCoefficient($p$)
+    \State $\rho_{baseline} \gets 0.5$ \Comment{Baseline demand-capacity ratio}
+    \For{$\Delta t \in \{0, 1, 2, 3, 4, 5\}$} \Comment{Future time slots}
+        \State $\text{cap}_p \gets$ GetCapacity($p$)
+        \State $\text{avail}_{p,\Delta t} \gets$ GetAvailability($p$, $t + \Delta t$)
+        \State $\text{occ}_{p,\Delta t} \gets \text{cap}_p - \text{avail}_{p,\Delta t}$
+        \State $\rho_{p,\Delta t} \gets \text{occ}_{p,\Delta t} / \text{cap}_p$
+        \State $\Delta\rho_p \gets$ ComputeDemandChange($\mathcal{H}$, $p$, $\Delta t$)
+        \If{$\rho_{p,\Delta t} < \rho_{baseline}$}
+            \State $\mu_{price} \gets -\alpha_p \times (\rho_{baseline} - \rho_{p,\Delta t}) \times (1 + \Delta\rho_p)$
+        \Else
+            \State $\mu_{price} \gets \alpha_p \times (\rho_{p,\Delta t} - \rho_{baseline}) \times (1 + \Delta\rho_p)$
+        \EndIf
+        \State $P_{p,\Delta t}^{(t+1)} \gets P_{p,\Delta t}^{(t)} \times (1 + \mu_{price})$
+        \State $P_{p,\Delta t}^{(t+1)} \gets$ Clamp($P_{p,\Delta t}^{(t+1)}$, $0.2 \times P_{base}$, $1.8 \times P_{base}$)
+    \EndFor
+\EndFor
+\State \Return $\mathbf{P}^{(t+1)}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Service Availability Tracking}
+Service providers track availability by continually updating bookings and capacity:
+
+\begin{algorithm}
+\caption{Update Service Availability}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Current step $t$
+\State \textbf{Output:} Updated availability for all services
+\State $\texttt{service\_tables} \gets [\texttt{UberLike1}, \texttt{UberLike2}, \texttt{BikeShare1}, \texttt{BikeShare2}]$
+\State $\texttt{booking\_logs} \gets \texttt{query\_all\_booking\_logs}()$
+\For{$\texttt{service\_table\_name}$ in $\texttt{service\_tables}$}
+    \State $\texttt{service\_table} \gets \texttt{get\_service\_table}(\texttt{service\_table\_name})$
+    \State $\texttt{new\_services} \gets \texttt{query}(\texttt{service\_table}, \texttt{step\_count} \geq t)$
+    \For{$\texttt{new\_service}$ in $\texttt{new\_services}$}
+        \State $\texttt{step\_offset} \gets \texttt{new\_service.step\_count} - t$
+        \If{$\texttt{step\_offset} < 6$} \Comment{Only interested in next 6 steps}
+            \State $\texttt{availability\_updates} \gets [\texttt{get}(\texttt{new\_service}, \texttt{availability\_} + i, \texttt{new\_service.capacity}) \text{ for } i \in \{0, 1, 2, 3, 4, 5\}]$
+            \For{$\texttt{booking}$ in $\texttt{booking\_logs}$}
+                \If{$\texttt{booking.company\_name} = \texttt{new\_service.company\_name}$}
+                    \For{$\texttt{step}$ in $\{0, 1, 2, 3, 4, 5\}$}
+                        \State $\texttt{step\_count} \gets t + \texttt{step}$
+                        \If{$\texttt{step\_count} \in \texttt{booking.affected\_steps}$}
+                            \State $\texttt{availability\_updates}[\texttt{step}] \gets \texttt{availability\_updates}[\texttt{step}] - 1$
+                        \EndIf
+                    \EndFor
+                \EndIf
+            \EndFor
+            \For{$i \gets 0$ to $5$}
+                \If{$\texttt{step\_offset} + i < 6$}
+                    \State $\texttt{set}(\texttt{new\_service}, \texttt{availability\_} + (\texttt{step\_offset} + i), \texttt{availability\_updates}[\texttt{step\_offset} + i])$
+                \EndIf
+            \EndFor
+        \EndIf
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Subsidy Pool Mechanism}
+The ABM-ETOP framework implements a Fixed Pool Subsidy (FPS) mechanism with various pool types (daily, weekly, monthly). The core algorithm for checking subsidy availability is:
+
+\begin{algorithm}
+\caption{Fixed Pool Subsidy Allocation}
+\label{alg:subsidy-allocation}
+\begin{algorithmic}[1]
+\Require Requested amount $r$, current time $t$, pool configuration $\mathcal{C}$, usage log $\mathcal{L}$
+\Ensure Granted subsidy amount $s \leq r$
+\State $t_{day} \gets \lfloor t / \text{TICKS\_PER\_DAY} \rfloor$
+\State $t_{week} \gets \lfloor t_{day} / 7 \rfloor$
+\State $\text{dow} \gets t_{day} \bmod 7$
+\If{$\text{dow} \geq 5$} \Comment{Weekend check}
+    \State \Return $0$
+\EndIf
+\If{$\mathcal{C}$.pool\_type = WEEKLY}
+    \State $U_{total} \gets \sum_{l \in \mathcal{L}} l$.amount where $l$.week $= t_{week}$
+\ElsIf{$\mathcal{C}$.pool\_type = DAILY}
+    \State $U_{total} \gets \sum_{l \in \mathcal{L}} l$.amount where $l$.day $= t_{day}$
+\ElsIf{$\mathcal{C}$.pool\_type = MONTHLY}
+    \State $U_{total} \gets \sum_{l \in \mathcal{L}} l$.amount where $l$.month $= \lfloor t_{day} / 30 \rfloor$
+\EndIf
+\State $R_{pool} \gets \mathcal{C}$.total\_amount $- U_{total}$
+\If{$R_{pool} \geq r$}
+    \State \Return $r$ \Comment{Full subsidy granted}
+\ElsIf{$R_{pool} > 0$}
+    \State \Return $R_{pool}$ \Comment{Partial subsidy granted}
+\Else
+    \State \Return $0$ \Comment{Pool depleted}
+\EndIf
+\end{algorithmic}
+\end{algorithm}
+
+The Fixed Pool Subsidy is implemented with a reset mechanism based on the selected pool type:
+
+\begin{equation}
+\text{is\_reset\_time}(t, \text{last\_reset}) = 
+\begin{cases}
+\text{current\_day} > \text{last\_reset\_day} & \text{if pool\_type = daily} \\
+\text{current\_week} > \text{last\_week} \text{ and day\_of\_week = 0} & \text{if pool\_type = weekly} \\
+\text{current\_month} > \text{last\_month} & \text{if pool\_type = monthly}
+\end{cases}
+\end{equation}
+
+\section{Parameter Specifications}
+\label{app:param_specs}
+
+The ABM-ETOP framework utilizes four distinct parameter vectors that comprehensively define the transportation system, policy interventions, agent behaviors, and environmental context. This section provides detailed specifications and example values for each parameter class drawn from the model implementation.
+
+\subsection{System Parameters \texorpdfstring{($\mathbf{S}$)}{(S)}}
+The system parameters vector defines the fundamental attributes and behavioral mechanisms of the transportation system:
+
+\begin{equation}
+\mathbf{S} = \begin{bmatrix} \boldsymbol{\beta} \\ \text{ASC} \\ \text{VOT} \\ \mathbf{N} \end{bmatrix}
+\end{equation}
+
+\subsubsection{Sensitivity Coefficients (\texorpdfstring{$\boldsymbol{\beta}$}{β})}
+The sensitivity coefficient vector $\boldsymbol{\beta} = [\beta_C, \beta_T, \beta_W, \beta_A]$ includes parameters for cost, time, modal penalties, and affordability that determine how agents weigh different factors in their utility functions:
+
+\begin{itemize}
+    \item $\beta_C$: Cost sensitivity coefficient (negative value, typically $-0.15$)
+    \item $\beta_T$: Time sensitivity coefficient (negative value, typically $-0.09$)
+    \item $\beta_W$: Modal penalty coefficient (typically $-0.04$)
+    \item $\beta_A$: Affordability coefficient (typically $-0.01$)
+\end{itemize}
+
+For high-income users focused on car travel, specialized coefficients are applied:
+\begin{itemize}
+    \item $\beta_C$ (high-income for car): $-0.02$ (lower price sensitivity)
+    \item $\beta_T$ (high-income for car): $-0.09$ (equivalent time sensitivity)
+\end{itemize}
+
+\subsubsection{Alternative-Specific Constants (ASC)}
+The ASC values capture inherent preferences for each transportation mode:
+\begin{itemize}
+    \item $\text{ASC}_{\text{car}}$: 0 (reference mode)
+    \item $\text{ASC}_{\text{bike}}$: 0
+    \item $\text{ASC}_{\text{public}}$: 0
+    \item $\text{ASC}_{\text{walk}}$: 0
+    \item $\text{ASC}_{\text{maas}}$: 0
+    \item $\text{ASC}_{\text{default}}$: 0
+\end{itemize}
+
+\subsubsection{Network Parameters \texorpdfstring{($\mathbf{N}$)}{(N)}}
+The network parameters define the physical transportation infrastructure and congestion effects:
+\begin{itemize}
+    \item $\alpha$: Congestion parameter (0.03)
+    \item $\beta$: Congestion parameter (1.5)
+    \item $\text{CONGESTION\_CAPACITY}$: 10 (base capacity of network segments)
+    \item $\text{CONGESTION\_T\_IJ\_FREE\_FLOW}$: 1.5 (free-flow travel time)
+    \item $\text{BACKGROUND\_TRAFFIC\_AMOUNT}$: 120 (base traffic volume)
+\end{itemize}
+
+\subsection{Policy Parameters \texorpdfstring{($\mathbf{P}$)}{(P)}}
+Policy parameters represent the intervention mechanisms controlled by policymakers:
+
+\begin{equation}
+\mathbf{P} = \begin{bmatrix} \text{FPS} \\ \mathbf{A} \end{bmatrix}
+\end{equation}
+
+\subsubsection{Fixed Pool Subsidy (FPS)}
+The FPS value $\text{FPS} \in \mathbb{R}^+$ establishes the total budget available for subsidy interventions. The framework evaluates FPS values ranging from 1,000 to 8,000 units.
+
+\subsubsection{Allocation Matrix \texorpdfstring{($\mathbf{A}$)}{(A)}}
+The allocation matrix $\mathbf{A} = \{a_{i,m}\} \in [0,1]^{I \times M}$ specifies subsidy percentages for each combination of income group $i$ and transportation mode $m$. Based on optimisation results, typical allocation values include:
+
+\begin{itemize}
+    \item Low-income, bike modes: 0.45-0.65
+    \item Low-income, car modes: 0.50-0.70
+    \item Low-income, MaaS bundle: 0.45-0.65
+    \item Low-income, public transit: 0.45-0.65
+    \item Middle-income, bike modes: 0.25-0.45
+    \item Middle-income, car modes: 0.25-0.45
+    \item Middle-income, MaaS bundle: 0.25-0.45
+    \item Middle-income, public transit: 0.20-0.40
+    \item High-income, bike modes: 0.05-0.20
+    \item High-income, car modes: 0.00-0.15
+    \item High-income, MaaS bundle: 0.05-0.20
+    \item High-income, public transit: 0.05-0.20
+\end{itemize}
+
+The allocation is subject to boundary constraints ($L_{i,m} \leq a_{i,m} \leq U_{i,m}$) and the overall budget constraint ($\sum_{i}\sum_{m}a_{i,m} \cdot C_{i,m} \cdot D_{i,m} \leq \text{FPS}$), where $C_{i,m}$ represents the original cost of mode $m$ for income group $i$ and $D_{i,m}$ denotes the demand.
+
+\subsection{Agent Parameters \texorpdfstring{($\mathbf{A}$)}{(A)}}
+Agent parameters define the characteristics and behaviours of the three primary agent types:
+
+\begin{equation}
+\mathbf{A} = \begin{bmatrix} \mathbf{C} \\ \mathbf{SP} \\ \mathbf{SC} \end{bmatrix}
+\end{equation}
+
+\subsubsection{Commuter Agent Parameters \texorpdfstring{($\mathbf{C}$)}{(C)}}
+Commuter agent parameters include socioeconomic attributes, preferences, and decision rules:
+\begin{itemize}
+    \item Income distribution: [0.5, 0.3, 0.2] for low, middle, and high income
+    \item Health distribution: [0.9, 0.1] for good and poor health
+    \item Payment distribution: [0.8, 0.2] for pay-as-you-go and subscription
+    \item Age distribution: $\{(18, 25): 0.2, (26, 35): 0.3, (36, 45): 0.2, (46, 55): 0.15, (56, 65): 0.1, (66, 75): 0.05\}$
+    \item Disability distribution: [0.2, 0.8] for with and without disability
+    \item Technology access distribution: [0.95, 0.05] for with and without access
+\end{itemize}
+
+\subsubsection{Service Provider Parameters \texorpdfstring{($\mathbf{SP}$)}{(SP)}}
+Service provider parameters define operational strategies, pricing mechanisms, and service characteristics:
+\begin{itemize}
+    \item $\alpha$ values (pricing sensitivity): $\{\text{UberLike1}: 0.3, \text{UberLike2}: 0.3, \text{BikeShare1}: 0.25, \text{BikeShare2}: 0.25\}$
+    \item Service capacities: $\{\text{UberLike1}: 15, \text{UberLike2}: 19, \text{BikeShare1}: 10, \text{BikeShare2}: 12\}$
+    \item Base prices: $\{\text{UberLike1}: 15.5, \text{UberLike2}: 16.5, \text{BikeShare1}: 2.5, \text{BikeShare2}: 3\}$
+    \item MaaS surcharge coefficients: $\{\text{S\_base}: 0.02, \text{alpha}: 0.10, \text{delta}: 0.5\}$
+    \item Public transit pricing: $\{\text{train}: \{\text{on\_peak}: 3, \text{off\_peak}: 2.6\}, \text{bus}: \{\text{on\_peak}: 2.4, \text{off\_peak}: 2\}\}$
+\end{itemize}
+
+\subsubsection{System Coordinator Parameters \texorpdfstring{($\mathbf{SC}$)}{(SC)}}
+System coordinator parameters include routing algorithms, matching protocols, and policy implementation mechanisms:
+\begin{itemize}
+    \item Subsidy allocation boundary constraints
+    \item Subsidy pool type (daily, weekly, or monthly reset)
+    \item Route optimization algorithms (modified Dijkstra, RAPTOR for public transit)
+    \item Matching and booking protocols
+\end{itemize}
+
+\subsection{Environment Parameters \texorpdfstring{($\mathbf{E}$)}{(E)}}
+Environment parameters establish the spatial and temporal context:
+
+\begin{equation}
+\mathbf{E} = \begin{bmatrix} \mathbf{G} \\ \mathbf{T} \end{bmatrix}
+\end{equation}
+
+\subsubsection{Spatial Network Parameters \texorpdfstring{($\mathbf{G}$)}{(G)}}
+Spatial parameters define the geographic layout of the transportation system:
+\begin{itemize}
+    \item Grid width: 85 units
+    \item Grid height: 85 units
+    \item Road network connectivity pattern
+    \item Station and stop locations
+\end{itemize}
+
+\subsubsection{Temporal Parameters \texorpdfstring{($\mathbf{T}$)}{(T)}}
+Temporal parameters establish time-dependent aspects of the system:
+\begin{itemize}
+    \item Simulation time steps: 144 steps
+    \item Peak period definitions for morning (48 ticks) and evening (105 ticks)
+    \item Time multipliers for trip generation
+    \item Service frequency variations by time of day
+\end{itemize}
+
+These parameter specifications provide a comprehensive definition of the ABM-ETOP framework, enabling systematic evaluation of transportation subsidy allocations across multiple equity and efficiency dimensions.
+
+\section{Optimisation Methodology}
+\label{app:optimization}
+
+\subsection{Bayesian Optimization with Gaussian Process Regression}
+
+\subsubsection{Objective Function Formulation}
+The optimisation problem aims to find the allocation matrix $\mathbf{A}^*$ that minimises a target metric $M(\mathbf{A})$:
+
+\begin{equation}
+\mathbf{A}^* = \underset{\mathbf{A}}{\text{argmin}} \, M(\mathbf{A})
+\end{equation}
+
+Subject to boundary constraints:
+\begin{equation}
+L_{i,m} \leq a_{i,m} \leq U_{i,m} \quad \forall i \in I, m \in M
+\end{equation}
+
+And the budget constraint:
+\begin{equation}
+\sum_{i}\sum_{m} a_{i,m} \cdot C_{i,m} \cdot D_{i,m} \leq \text{FPS}
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $a_{i,m}$: Subsidy percentage for income group $i$ and mode $m$
+    \item $L_{i,m}$, $U_{i,m}$: Lower and upper bounds for each allocation
+    \item $C_{i,m}$: Original cost of mode $m$ for income group $i$
+    \item $D_{i,m}$: Demand for mode $m$ by income group $i$
+    \item FPS: Fixed Pool Subsidy value
+\end{itemize}
+
+\subsubsection{Gaussian Process Specification}
+The Bayesian optimisation employs a Gaussian Process regression model with a Matérn kernel:
+
+\begin{equation}
+k(A, A') = \sigma^2 \left(1 + \frac{\sqrt{5}|A-A'|}{l} + \frac{5|A-A'|^2}{3l^2}\right) \exp\left(-\frac{\sqrt{5}|A-A'|}{l}\right)
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $\sigma^2$: Signal variance
+    \item $l$: Length scale parameter
+    \item $|A-A'|$: Euclidean distance between allocation matrices
+\end{itemize}
+
+\subsubsection{Expected Improvement Acquisition Function}
+The optimisation uses the Expected Improvement (EI) acquisition function to balance exploration and exploitation:
+
+\begin{equation}
+\text{EI}(A) = \mathbb{E}[\max(f_{\min} - f(A), 0)]
+\end{equation}
+
+This can be computed analytically as:
+
+\begin{equation}
+\text{EI}(A) = 
+\begin{cases}
+(\mu_{\min} - \mu(A))\Phi(Z) + \sigma(A)\phi(Z) & \text{if } \sigma(A) > 0 \\
+0 & \text{if } \sigma(A) = 0
+\end{cases}
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $Z = \frac{\mu_{\min} - \mu(A)}{\sigma(A)}$ if $\sigma(A) > 0$
+    \item $\mu(A)$: Predicted mean at point $A$
+    \item $\sigma(A)$: Predicted standard deviation at point $A$
+    \item $\mu_{\min}$: Current best observed value
+    \item $\Phi$: Standard normal CDF
+    \item $\phi$: Standard normal PDF
+\end{itemize}
+
+\subsection{Parameter Space and Constraints}
+The subsidy allocation matrix $\mathbf{A} = \{a_{i,m}\}$ is optimised within the following bounds:
+
+\begin{table}[!h]
+\centering
+\caption{Subsidy Allocation Parameter Bounds}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Income Level} & \textbf{Mode} & \textbf{Lower Bound} & \textbf{Upper Bound} \\
+\midrule
+Low & Bike & 0.45 & 0.65 \\
+Low & Car & 0.50 & 0.70 \\
+Low & MaaS Bundle & 0.45 & 0.65 \\
+Low & Public & 0.45 & 0.65 \\
+\midrule
+Middle & Bike & 0.25 & 0.45 \\
+Middle & Car & 0.25 & 0.45 \\
+Middle & MaaS Bundle & 0.25 & 0.45 \\
+Middle & Public & 0.20 & 0.40 \\
+\midrule
+High & Bike & 0.05 & 0.20 \\
+High & Car & 0.00 & 0.15 \\
+High & MaaS Bundle & 0.05 & 0.20 \\
+High & Public & 0.05 & 0.20 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Policy Objectives and Metrics}
+\label{subsec:policy_objectives}
+
+The ABM-ETOP framework evaluates three distinct policy objectives, each with a specific metric to optimise:
+
+\subsubsection{Mode Share Equity Metric}
+The mode share equity metric measures disparities in transportation mode access across income groups:
+
+\begin{equation}
+E_{\text{mode}}(\mathbf{A}) = \sum_{i} w_i \cdot \sum_{m} \phi(|s_{i,m} - \bar{s}_m|)
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $w_i$: Population weight for income group $i$
+    \item $s_{i,m}$: Mode share of mode $m$ for income group $i$
+    \item $\bar{s}_m$: Average mode share for mode $m$ across all income groups
+    \item $\phi(x)$: Transformation function with appropriate scaling
+\end{itemize}
+
+Lower values indicate more equitable mode share distributions across income groups.
+
+\subsubsection{Travel Time Equity Metric}
+The travel time equity metric addresses disparities in temporal burdens across income groups:
+
+\begin{equation}
+E_{\text{time}}(\mathbf{A}) = \sum_{i} |t_i - \bar{t}|
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $t_i$: Average travel time for income group $i$
+    \item $\bar{t}$: Overall average travel time across all income groups
+\end{itemize}
+
+Lower values indicate smaller differences in average travel times between income groups.
+
+\subsubsection{Total System Travel Time Metric}
+The total system travel time metric evaluates system-wide efficiency:
+
+\begin{equation}
+T_{\text{total}}(\mathbf{A}) = \sum_{i} \sum_{j} t_{i,j}
+\end{equation}
+
+Where $t_{i,j}$ is travel time for trip $j$ made by income group $i$. Lower values indicate a more efficient transportation system with reduced overall travel time burdens.
+
+
+\section{Calibration and Validation}
+\label{app:calibration_validation}
+
+\subsection{Parameter Calibration}
+The model parameters were calibrated using a combination of literature values and iterative adjustment to match empirical travel behaviour patterns:
+
+\begin{table}[!ht]
+\centering
+\caption{Key Parameter Sources and Calibration Methods}
+\begin{tabular}{lcll}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Source} & \textbf{Calibration Method} \\
+\midrule
+$\beta_C$ (Cost Sensitivity) & -0.05 & Literature & Income-specific adjustments \\
+$\beta_T$ (Time Sensitivity) & -0.06 & Literature & Income-specific adjustments \\
+$\beta_W$ (Modal Penalty) & -0.04 & Literature & Mode-specific penalties \\
+$\beta_A$ (Affordability) & -0.02 & Calibration & Iterative adjustment \\
+\midrule
+ASC Values & Various & Calibration & Adjusted for baseline mode shares \\
+VOT by Income & \$5-\$20 & Calibration& Income-proportional calculation \\
+$\alpha$ (Congestion) & 0.15 & BPR Function & Standard value with adjustment \\
+$\beta$ (Congestion) & 4.0 & BPR Function & Standard urban network value \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Income-specific adjustments were applied to the base sensitivity parameters:
+\begin{itemize}
+    \item \textbf{Low Income:} $\beta_C$ increased by 50\%, $\beta_T$ reduced by 15\%
+    \item \textbf{Middle Income:} Base parameters used without adjustment
+    \item \textbf{High Income:} $\beta_C$ reduced by 10\%, $\beta_T$ increased by 20\%
+\end{itemize}
+
+\subsection{Validation Against Stylized Facts}
+The model was validated against established transportation patterns and stylised facts from the literature:
+
+\begin{table}[!ht]
+\centering
+\caption{Validation Against Transportation Research Findings}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Stylized Fact} & \textbf{Model Evidence} & \textbf{Confirmed} \\
+\midrule
+Higher income groups make more trips & Avg. daily trips: Low 2.2, Middle 3.3, High 3.9 & Yes \\
+Mode choice sensitive to travel time ratio & 10\% increase in car speed increases car mode share by 4.2\% & Yes \\
+Peak period congestion emerges naturally & Traffic volume 2.5-3.0× higher during peaks & Yes \\
+Public transit use decreases with income & Transit shares: Low 32.4\%, Middle 27.3\%, High 18.6\% & Yes \\
+Travel burden correlates with income & Travel time burden 1.8× higher for low-income groups & Yes \\
+Trip rates follow time-of-day distributions & Clear morning and evening peaks emerge & Yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Robustness Analysis}
+Multiple simulation runs were conducted with different random seeds to ensure results were not sensitive to stochastic variations:
+
+\begin{table}[!ht]
+\centering
+\caption{Robustness of Policy Recommendations}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Scenario} & \textbf{Optimal FPS} & \textbf{Mode Share} & \textbf{Travel Time} & \textbf{Subsidy} \\
+& \textbf{Range} & \textbf{Equity Change} & \textbf{Equity Change} & \textbf{Usage Change} \\
+\midrule
+Base Case & 3,000-4,000 & Reference & Reference & Reference \\
+High Demand (+20\%) & 3,500-4,500 & +5.2\% & +8.7\% & +9.3\% \\
+Low Demand (-20\%) & 2,500-3,500 & -4.1\% & -6.3\% & -7.9\% \\
+High Congestion & 3,500-4,500 & +3.8\% & +12.4\% & +4.2\% \\
+Higher Income Disparity & 3,000-4,000 & +6.7\% & +9.2\% & +1.8\% \\
+Lower Income Disparity & 2,500-3,500 & -8.3\% & -11.4\% & -3.5\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\section{Competing Benefits Calculation}\label{app:competing-benefits-calculation}
+
+This section provides detailed step-by-step calculations for the competing benefits analysis presented in Section \ref{sec:competing-benefits}, demonstrating how the net benefits ratio of 1.70:1 was derived for the optimal transport subsidy programme.
+
+\subsection{Program Costs Calculation}
+\textbf{Baseline Data:}
+\begin{itemize}
+    \item Per capita transport spending: AUD \$5,607.69 \citep{ABS_HES_2024}
+    \item Population: 500,000 residents
+    \item Eligible transport services: 33\% of total transport spending
+    \item Optimal subsidy range: 54.0-71.9\% of eligible costs (midpoint: 62.95\%)
+\end{itemize}
+
+\textbf{Step 1: Calculate Total Transport Expenditure}
+\begin{align}
+\text{Total Transport Expenditure} &= \text{Per Capita Spending} \times \text{Population} \\
+&= \$5,607.69 \times 500,000 \\
+&= \$2,803,845,000
+\end{align}
+
+\textbf{Step 2: Calculate Eligible Transport Costs}
+\begin{align}
+\text{Eligible Transport Costs} &= \text{Total Transport Expenditure} \times 0.33 \\
+&= \$2,803,845,000 \times 0.33 \\
+&= \$925,268,850
+\end{align}
+
+\textbf{Step 3: Calculate Direct Subsidy Costs}
+\begin{align}
+\text{Direct Subsidy Costs} &= \text{Eligible Transport Costs} \times 0.6295 \\
+&= \$925,268,850 \times 0.6295 \\
+&= \$582,456,741
+\end{align}
+
+\subsection{Travel Time Benefits Calculation}
+
+\textbf{Baseline Data:}
+\begin{itemize}
+    \item Income-standardized value of time: \$18.80 per hour \citep{TfNSW_2025}
+    \item Average trips per person per day: 2.5
+    \item Annual travel days: 365
+    \item System travel time reduction: 24.0\% (from simulation results)
+\end{itemize}
+
+\textbf{Step 1: Calculate Total Annual Trips}
+\begin{align}
+\text{Total Annual Trips} &= \text{Population} \times \text{Trips per Day} \times \text{Days per Year} \\
+&= 500,000 \times 2.5 \times 365 \\
+&= 456,250,000 \text{ trips}
+\end{align}
+
+\textbf{Step 2: Calculate Baseline Travel Time Using Australian Data}
+Based on HILDA Survey and McCrindle research findings:
+\begin{itemize}
+    \item Australian average commute: 48-60 minutes per day (round trip) \citep{McCrindle_2022}
+    \item City workers average: 66 minutes per day (round trip) \citep{HILDA_2019}
+    \item Average per trip (one way): 29 minutes 
+\end{itemize}
+
+\textbf{Step 3: Calculate Total Baseline Travel Time}
+\begin{align}
+\text{Total Baseline Hours} &= \frac{456,250,000 \times 29}{60} \\
+&= 220,520,833 \text{ hours annually}
+\end{align}
+
+\textbf{Step 4: Calculate Time Savings}
+\begin{align}
+\text{Time Savings} &= \text{Total Baseline Hours} \times 0.24 \\
+&= 220,520,833  \times 0.24 \\
+&= 52,925,000 \text{ hours annually}
+\end{align}
+
+\textbf{Step 5: Account for Redistributive Effects}
+The optimal subsidy creates redistributive effects across income groups:
+\begin{align}
+\text{Net Time Savings} &=52,925,000 \text{ hours annually} \\
+\text{Monetized Value} &= 52,925,000 \times \$18.80 \\
+&= \$994,990,000 \approx \$994.99 \text{ million}
+\end{align}
+
+\subsection{Environmental Impact Analysis}
+
+\textbf{Methodology:}
+Using actual modal shifts from simulation results and Australian transport data \citep{ABS_Census_2016, ourworldindata_transport_2023}.
+
+\textbf{Baseline Data:}
+\begin{itemize}
+    \item Average commuting distance: 16 km \citep{ABS_Census_2016}
+    \item Car emissions: 170 g CO$_2$/km \citep{ourworldindata_transport_2023}
+    \item Public transit emissions: 35 g CO$_2$/km per passenger \citep{ourworldindata_transport_2023}
+    \item Carbon price: \$33.08 per tonne CO$_2$-e \citep{CER_ACCU_2025}
+    \item Population: 500,000 commuters
+    \item Annual trips: 913 round trips per commuter
+\end{itemize}
+
+\textbf{Step 1: Calculate Baseline Emissions}
+
+\textbf{Baseline car usage by income group:}
+\begin{align}
+\text{Low income car users} &= 8.2\% \times 500,000\times0.5 = 20,500 \text{ people} \\
+\text{Middle income car users} &= 42.3\% \times 500,000\times0.3 = 63,450 \text{ people} \\
+\text{High income car users} &= 71.6\% \times 500,000\times0.2 = 71,600 \text{ people} \\
+\text{Total baseline car users} &= 155,550 \text{ people}
+\end{align}
+
+\textbf{Baseline public transit usage by income group:}
+\begin{align}
+\text{Low income transit users} &= 11.5\% \times 500,000\times0.5 = 28,750 \text{ people} \\
+\text{Middle income transit users} &= 10.3\% \times 500,000\times0.3 = 15,450 \text{ people} \\
+\text{High income transit users} &= 9.1\% \times 500,000\times0.2 = 9,100 \text{ people} \\
+\text{Total baseline transit users} &= 53,300 \text{ people}
+\end{align}
+
+\textbf{Baseline annual emissions:}
+\begin{align}
+\text{Baseline car emissions} &= 155,550 \times 913 \times 16 \times 0.17 \\
+&=386,287 \text{ tonnes CO}_2\text{/year}
+\end{align}
+
+\begin{align}
+\text{Baseline transit emissions} &= 53,300 \times 913 \times 16 \times 0.035 \\
+&= 27,251 \text{ tonnes CO}_2\text{/year}
+\end{align}
+
+\begin{align}
+\text{Total baseline emissions} &= 386,287 + 27,251 \\
+&= 413,538 \text{ tonnes CO}_2\text{/year}
+\end{align}
+
+\textbf{Step 2: Calculate Post-Subsidy Emissions}
+
+\textbf{Post-subsidy car usage:}
+\begin{align}
+\text{Post-subsidy car users} &= (29.6\% \times 500,000\times0.5) + (33.5\% \times 500,000\times0.3) + (38.2\% \times 500,000\times0.2) \\
+&= 74,000 + 50,250 + 38,200 = 162,450 \text{ people}
+\end{align}
+
+\textbf{Post-subsidy public transit usage:}
+\begin{align}
+\text{Post-subsidy transit users} &= (29.8\% \times 500,000\times0.5) + (27.6\% \times 500,000\times0.3) + (24.3\% \times 500,000\times0.2) \\
+&=74,500 + 41,400 + 24,300 = 140,200 \text{ people}
+\end{align}
+
+\textbf{Post-subsidy annual emissions:}
+\begin{align}
+\text{Post-subsidy car emissions} &= 162,450 \times 913 \times 16 \times 0.17 \\
+&= 403,421 \text{ tonnes CO}_2\text{/year}
+\end{align}
+
+\begin{align}
+\text{Post-subsidy transit emissions} &= 140,200 \times 913 \times 16 \times 0.035 \\
+&= 71,681 \text{ tonnes CO}_2\text{/year}
+\end{align}
+
+\begin{align}
+\text{Total post-subsidy emissions} &= 403,421 + 71,681 \\
+&= 475,102 \text{ tonnes CO}_2\text{/year}
+\end{align}
+
+\textbf{Step 3: Net Environmental Impact}
+\begin{align}
+\text{Net emission change} &= 475,102 - 413,538 \\
+&= +61,564 \text{ tonnes CO}_2\text{/year increase}
+\end{align}
+
+\begin{align}
+\text{Environmental cost} &= 61,564 \times \$33.08 \\
+&= \$2,036,537 \text{ per year}
+\end{align}
+
+The \$33.08 per tonne CO$_2$-e represents the Australian Carbon Credit Unit (ACCU) price as of March 31, 2025, as reported by the Clean Energy Regulator, which serves as the government's benchmark for carbon pricing and environmental cost assessment \citep{CER_ACCU_2025}.
+
+This analysis suggests the need for mode-specific subsidy targeting that prioritises truly sustainable transport options to achieve environmental co-benefits alongside equity objectives.
+\subsection{Net Benefits Assessment}
+
+\textbf{Total Benefits Summary:}
+\begin{align}
+\text{Travel Time Benefits} &= \$994.99 \text{ million} \\
+\text{Environmental Benefits} &= -\$2.04 \text{ million} \\
+\text{Total Annual Benefits} &= \$992.95 \text{ million}
+\end{align}
+
+\textbf{Net Benefits Ratio:}
+\begin{align}
+\text{NBR} &= \frac{\text{Total Annual Benefits}}{\text{Total Annual Costs}} \\
+&= \frac{\$992.95 \text{ million}}{\$582.46 \text{ million}} \\
+&= 1.70475 \approx 1.70
+\end{align}
+
+This assessment demonstrates that the optimal transport subsidy programme generates \$1.70 in net societal benefits for every \$1.00 invested. However, the competing benefits analysis reveals important trade-offs: while achieving substantial equity improvements and travel time savings (\$994.99 million), the programme incurs environmental costs (\$2.04 million) through increased emissions, highlighting the need for integrated policy design that balances multiple social objectives.
+
