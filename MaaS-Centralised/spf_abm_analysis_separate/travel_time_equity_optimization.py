@@ -602,7 +602,7 @@ def optimize_allocation_parallel(fps_value, base_parameters, num_cpus=NUM_CPUS):
     X = X_init
     y = np.array(y_init, dtype=float)
 
-    max_iterations = 3
+    max_iterations = 10
 
     # ---- EI loop ----
     for iteration in range(max_iterations):

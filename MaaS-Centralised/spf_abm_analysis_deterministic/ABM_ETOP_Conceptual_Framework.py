@@ -116,6 +116,9 @@ def draw_arrow(start_x, start_y, end_x, end_y, color, style='-', width=2, zorder
 plt.text(0.5, 0.99, "ABM-ETOP Conceptual Framework", 
          ha='center', va='top', fontsize=18, weight='bold',
          path_effects=[withStroke(linewidth=4, foreground='white')])
+plt.text(0.5, 0.926, "Fixed inputs (S, A, E), policy vector P = (FPS, a_i,m), simulator output Y = [E_mode, E_time, T_total]",
+         ha='center', va='top', fontsize=8.1, style='italic',
+         path_effects=[withStroke(linewidth=3, foreground='white')])
 
 # Draw the main sections with improved spacing
 agent_section = draw_section(agent_y, 0.92, 0.145, "Agent Interactions Layer", agent_color, agent_fill, 14)
@@ -132,6 +135,7 @@ provider_x, provider_y = 0.75, agent_y + 0.085
 draw_box(commuter_x, commuter_y, 0.16, 0.1, "", agent_color, agent_fill)  # Empty box first
 plt.text(commuter_x, commuter_y+0.01, "Commuter \nAgents", ha='center', va='center', fontsize=11, weight='bold')
 plt.text(commuter_x, commuter_y-0.02, "(socioeconomic \ndiversity)", ha='center', va='center', fontsize=10)
+plt.text(commuter_x, commuter_y-0.055, "A", ha='center', va='center', fontsize=9, style='italic')
 
 draw_box(coordinator_x, coordinator_y, 0.16, 0.1, "", optimization_color, optimization_fill)  # Empty box first
 plt.text(coordinator_x, coordinator_y+0.01, "System \nCoordinator", ha='center', va='center', fontsize=11, weight='bold')
@@ -140,6 +144,7 @@ plt.text(coordinator_x, coordinator_y-0.02, "(MaaS Platform)", ha='center', va='
 draw_box(provider_x, provider_y, 0.16, 0.1, "", policy_color, policy_fill)  # Empty box first
 plt.text(provider_x, provider_y+0.01, "Service Provider \nAgents", ha='center', va='center', fontsize=11, weight='bold')
 plt.text(provider_x, provider_y-0.02, "(transport modes)", ha='center', va='center', fontsize=10)
+plt.text(provider_x, provider_y-0.055, "A", ha='center', va='center', fontsize=9, style='italic')
 
 travel_request_arrow = draw_arrow(commuter_x+0.125, commuter_y, coordinator_x-0.125, coordinator_y, agent_color, rad=0.1)
 plt.text((commuter_x+0.125 + coordinator_x-0.125)/2, commuter_y+0.05, "Travel\nrequests", 
@@ -177,7 +182,7 @@ fps_x, fps_y = 0.25, policy_y + 0.085
 # Moved matrix to give it more space
 matrix_x, matrix_y = 0.68, policy_y + 0.085
 
-draw_box(fps_x, fps_y, 0.25, 0.11, "Fixed Pool Subsidy (FPS)", fps_color, fps_fill, 11, True)
+draw_box(fps_x, fps_y, 0.25, 0.11, "Fixed Pool Subsidy (FPS)\nP", fps_color, fps_fill, 11, True)
 
 # IMPROVED: Policy Intervention Layer visualization - CLEANER VERSION
 # Create a container for the allocation visualization
@@ -186,6 +191,8 @@ alloc_box = draw_box(matrix_x, matrix_y, 0.45, 0.13, "", policy_color, policy_fi
 # Add title
 plt.text(matrix_x, matrix_y+0.055, "Subsidy Allocation Framework", ha='center', va='center', 
          fontsize=11, weight='bold')
+plt.text(matrix_x, matrix_y+0.026, "allocation matrix a_i,m", ha='center', va='center',
+         fontsize=7.4, style='italic')
 
 # Create a 3x4 grid for allocation visualization
 income_groups = ['Low', 'Middle', 'High']
@@ -209,8 +216,8 @@ for i, income in enumerate(income_groups):
 # Draw mode labels on top
 for j, mode in enumerate(transport_modes):
     x_pos = grid_left + (j + 0.5) * cell_width
-    plt.text(x_pos, grid_bottom + grid_height + 0.01, mode, ha='center', va='bottom', 
-             fontsize=8, weight='bold', color=policy_color)
+    plt.text(x_pos, grid_bottom + grid_height + 0.002, mode, ha='center', va='bottom', 
+             fontsize=7.5, weight='bold', color=policy_color)
 
 # Define allocation values - higher values for low income
 allocations = {
@@ -241,7 +248,7 @@ for i, income in enumerate(income_groups):
 
 # Add legend at bottom of allocation grid
 plt.text(matrix_x, grid_bottom - 0.015, 
-        "Circle size & cell color = allocation percentage", 
+        "Circle size = allocation percentage a_i,m", 
         ha='center', va='center', fontsize=8, style='italic')
 # FPS to matrix connection
 draw_arrow(fps_x+0.125, fps_y, matrix_x-0.21, matrix_y, fps_color, label="Distributes", rad=0.1)
@@ -256,12 +263,18 @@ tradeoffs_x, tradeoffs_y = 0.5, outcome_y + 0.125
 draw_box(mode_equity_x, mode_equity_y+0.01, 0.2, 0.035, "Mode Share Equity\n(vertical equity 1)", outcome_color, outcome_fill, 11, True)
 draw_box(time_equity_x, time_equity_y+0.01, 0.2, 0.035, "Travel Time Equity\n(vertical equity 2)", outcome_color, outcome_fill, 11, True)
 draw_box(system_time_x, system_time_y+0.01, 0.2, 0.045, "Total System \nTravel Time\n(horizontal equity \n & efficiency)", policy_color, policy_fill, 11, True)
-draw_box(tradeoffs_x, tradeoffs_y+0.025, 0.5, 0.02, "Equity-Efficiency Trade-offs", outcome_color, outcome_fill, 11, True)
+draw_box(tradeoffs_x, tradeoffs_y+0.025, 0.5, 0.03, "Objective vector Y", outcome_color, outcome_fill, 11, True)
+plt.text(tradeoffs_x, tradeoffs_y+0.003, "equity-efficiency trade-offs", ha='center', va='center', fontsize=8, style='italic')
+plt.text(mode_equity_x, mode_equity_y+0.052, "E_mode", ha='center', va='center', fontsize=8.5, style='italic')
+plt.text(time_equity_x, time_equity_y+0.052, "E_time", ha='center', va='center', fontsize=8.5, style='italic')
+plt.text(system_time_x, system_time_y+0.058, "T_total", ha='center', va='center', fontsize=8.5, style='italic')
 
 # Connect outcomes to tradeoffs with improved arrows
 draw_arrow(mode_equity_x, mode_equity_y, tradeoffs_x-0.15, tradeoffs_y, outcome_color, rad=0.05)
 draw_arrow(time_equity_x, time_equity_y+0.045, tradeoffs_x, tradeoffs_y, outcome_color, rad=0.1)
 draw_arrow(system_time_x, system_time_y+0.045, tradeoffs_x+0.15, tradeoffs_y, policy_color, rad=0.0)
+
+plt.text(0.5, agent_y + 0.163, "S and E implementation", ha='center', va='center', fontsize=7.8, style='italic')
 
 # Optimization Process Components - spread out more
 sim_x, sim_y = 0.2, optimization_y + 0.085
@@ -270,10 +283,10 @@ opt_x, opt_y = 0.6, optimization_y + 0.085
 update_x, update_y = 0.8, optimization_y + 0.085
 
 # Draw optimization components
-draw_box(sim_x, sim_y, 0.15, 0.05, "Simulation\nRun ABM", optimization_color, optimization_fill, 11, True)
-draw_box(eval_x, eval_y, 0.15, 0.05, "Evaluation\nMetrics", optimization_color, optimization_fill, 11, True)
-draw_box(opt_x, opt_y, 0.15, 0.05, "Bayesian\nOptimization", optimization_color, optimization_fill, 11, True)
-draw_box(update_x, update_y, 0.15, 0.05, "Policy\nUpdate", optimization_color, optimization_fill, 11, True)
+draw_box(sim_x, sim_y, 0.15, 0.05, "Simulation\nRun ABM f(.)", optimization_color, optimization_fill, 11, True)
+draw_box(eval_x, eval_y, 0.15, 0.05, "Evaluation\nObserve Y", optimization_color, optimization_fill, 11, True)
+draw_box(opt_x, opt_y, 0.15, 0.05, "Bayesian\nOptimisation", optimization_color, optimization_fill, 11, True)
+draw_box(update_x, update_y, 0.15, 0.05, "Policy\nUpdate P", optimization_color, optimization_fill, 11, True)
 
 # Connect optimization components with a cycle of arrows
 draw_arrow(sim_x+0.075, sim_y, eval_x-0.075, eval_y, optimization_color, width=1.8, rad=0.0)

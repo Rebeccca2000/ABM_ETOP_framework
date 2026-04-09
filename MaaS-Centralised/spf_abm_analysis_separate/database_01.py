@@ -1,6 +1,6 @@
 from agent_subsidy_pool import SubsidyPoolConfig
 DB_CONNECTION_STRING = 'sqlite:///service_provider_database.db'
-SIMULATION_STEPS = 120
+SIMULATION_STEPS = 144
 # #####################################Control for commuters#################################
 num_commuters = 130
 income_weights = [0.5, 0.3, 0.2]# income_levels = ['low', 'middle', 'high']
@@ -73,10 +73,10 @@ UTILITY_FUNCTION_BASE_COEFFICIENTS = {
 # Dictionary to store ASC values for each mode
 ASC_VALUES = {
     'walk': 0,      # Refined value for walking
-    'bike': 0,    # Refined value for biking
+    'bike': 2,    # Refined value for biking
     'car': 0,     # Refined value for car
     'public': 0,    # Refined value for public transport
-    'maas': 8,      # Refined value for MaaS bundle
+    'maas': 0,      # Refined value for MaaS bundle
     'default': 0     # Default value for any mode not covered
 }
 
